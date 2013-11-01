@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>PluginVersion</key>
+	<string>0.1</string>
+	<key>ServerApiVersion</key>
+	<string>1.4</string>
+	<key>IwsApiVersion</key>
+	<string>1.0.0</string>
+	<key>CFBundleDisplayName</key>
+	<string>GE Concord Alarm Panel</string>
+	<key>CFBundleIdentifier</key>
+	<string>bm.decouto.indigoplugin.concordpanel</string>
+	<key>CFBundleVersion</key>
+	<string>1.0.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>http://decouto.bm</string>
+		</dict>
+	</array>
+</dict>
+</plist>

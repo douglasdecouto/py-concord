@@ -1,0 +1,121 @@
+<?xml version="1.0"?>
+<Devices>
+
+  <Device type="custom" id="concordPanel">
+    <Name>Concord Alarm Panel</Name>
+
+    <ConfigUI>
+      <SupportURL>http://decouto.bm</SupportURL>
+      <!-- <Field type="serialport" id="panelSerialPort" /> -->
+      <Field type="label" id="theLabel">
+        <Label>Dummy label</Label>
+      </Field>
+    </ConfigUI>
+
+    <States>
+      <State id="panelType" defautValue="Unknown" readonly="YES">
+        <TriggerLabel>Panel type</TriggerLabel>
+        <ControlPageLabel>Panel type</ControlPageLabel>
+        <ValueType>String</ValueType>
+      </State>
+      <State id="panelIsConcord" boolType="YesNo" defautValue="No" readonly="YES">
+        <ValueType>Boolean</ValueType>
+        <TriggerLabel>Panel is Concord</TriggerLabel>
+        <ControlPageLabel>Panel is Concord</ControlPageLabel>
+      </State>
+      <State id="panelSerialNumber" defautValue="Unknown" readonly="YES">
+        <ValueType>String</ValueType>
+        <TriggerLabel>Panel serial number</TriggerLabel>
+        <ControlPageLabel>Panel serial number</ControlPageLabel>
+      </State>
+      <State id="panelHwRev" defautValue="Unknown" readonly="YES">
+        <ValueType>String</ValueType>
+        <TriggerLabel>Panel hardware revision</TriggerLabel>
+        <ControlPageLabel>Panel hardware revision</ControlPageLabel>
+      </State>
+      <State id="panelSwRev" defautValue="Unknown" readonly="YES">
+        <ValueType>String</ValueType>
+        <TriggerLabel>Panel software revision</TriggerLabel>
+        <ControlPageLabel>Panel software revision</ControlPageLabel>
+      </State>
+      <State id="panelState" defaultValue="preparing" readonly="YES">
+	<ValueType>
+	  <List>
+	    <Option value="preparing">Preparing</Option>
+	    <Option value="connecting">Connecting</Option>
+	    <Option value="exploring">Exploring</Option>
+	    <Option value="ready">Ready</Option>
+	    <Option value="unavailable">Unavailable</Option>
+	  </List>
+	</ValueType>
+	<TriggerLabel>System State</TriggerLabel>
+	<ControlPageLabel>State</ControlPageLabel>
+      </State>
+    </States>
+
+    <UiDisplayStateId>panelState</UiDisplayStateId>
+
+  </Device>
+  <Device type="custom" id="zone">
+    <Name>Zone</Name>
+    <States>
+      <State id="isNormal" defaultValue="True">
+	<ValueType>Boolean</ValueType>
+	<TriggerLabel>Zone is Normal</TriggerLabel>
+	<ControlPageLabel>Zone Normal</ControlPageLabel>
+      </State>
+      <State id="isTripped" defaultValue="False">
+	<ValueType>Boolean</ValueType>
+	<TriggerLabel>Zone is Tripped</TriggerLabel>
+	<ControlPageLabel>Zone Tripped</ControlPageLabel>
+      </State>
+      <State id="isFaulted" defaultValue="False">
+	<ValueType>Boolean</ValueType>
+	<TriggerLabel>Zone is Faulted</TriggerLabel>
+	<ControlPageLabel>Zone Faulted</ControlPageLabel>
+      </State>
+      <State id="isAlarm" defaultValue="False">
+	<ValueType>Boolean</ValueType>
+	<TriggerLabel>Zone is in Alarm</TriggerLabel>
+	<ControlPageLabel>Zone Alarm</ControlPageLabel>
+      </State>
+      <State id="isTrouble" defaultValue="False">
+	<ValueType>Boolean</ValueType>
+	<TriggerLabel>Zone has Trouble</TriggerLabel>
+	<ControlPageLabel>Zone Trouble</ControlPageLabel>
+      </State>
+      <State id="isBypassed" defaultValue="False">
+	<ValueType>Boolean</ValueType>
+	<TriggerLabel>Zone is Bypassed</TriggerLabel>
+	<ControlPageLabel>Zone Bypasses</ControlPageLabel>
+      </State>
+      <State id="zoneNumber" defaultValue="-1">
+        <ValueType>Number</ValueType>
+        <TriggerLabel>Zone number</TriggerLabel>
+        <ControlPageLabel>Zone number is</ControlPageLabel>
+      </State>
+      <State id="zoneText" defaultValue="">
+        <ValueType>String</ValueType>
+        <TriggerLabel>Name</TriggerLabel>
+        <ControlPageLabel>Name is</ControlPageLabel>
+      </State>
+      <State id="zoneType" defaultValue="Unknown">
+        <ValueType>String</ValueType>
+        <TriggerLabel>Type</TriggerLabel>
+        <ControlPageLabel>Type is</ControlPageLabel>
+      </State>
+    </States>
+	
+    <UiDisplayStateId>isNormal</UiDisplayStateId>
+
+    <ConfigUI>
+      <SupportURL>http://decouto.bm</SupportURL>
+
+      <Field id="zoneAddress" type="menu">
+	<List class="self" filter="N/A" method="zoneFilter"/>
+	<Label>Zone:</Label>
+      </Field>
+    </ConfigUI>
+  </Device>
+
+</Devices>

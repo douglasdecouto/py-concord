@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<MenuItems>
+  <MenuItem id="refreshDynamicState">
+    <Name>Refresh Dynamic State</Name>
+    <CallbackMethod>menuRefreshDynamicState</CallbackMethod>
+  </MenuItem>
+</MenuItems>

@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<Actions>
+	<SupportURL>http://decouto.bm</SupportURL>
+
+	<Action id="arm">
+	  <Name>Arm</Name>
+	  <CallbackMethod>arm</CallbackMethod>
+
+        <ConfigUI>
+	  <Field id="lab1" type="label">Arm this partition so it will trigger alarms when its zones are violated.</Field>
+	  <Field id="sep1" type="separator"/>
+          <Field id="type" type="menu" defaultValue="away">
+            <Label>Type:</Label>
+            <List>
+	      <Option value="away">Away</Option>
+	      <Option value="stay">Stay</Option>
+	      <Option value="instant">Instant</Option>
+	      <Option value="max">Max</Option>
+	    </List>
+          </Field>
+
+	  <Field id="sep2" type="separator"/>
+	  <Field id="code" type="textfield" secure="true" defaultValue="1">
+	    <Label>Code:</Label>
+	  </Field>
+	  <Field id="user" type="textfield" defaultValue="1">
+	    <Label>User:</Label>
+	  </Field>
+        </ConfigUI>
+	</Action>
+</Actions>

@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<PluginConfig>
+  <SupportURL>http://decouto.bm</SupportURL>
+    <Field id="infoLabel" type="label">
+      <Label>Configuration</Label>
+    </Field>
+  <Field type="serialport" id="panelSerialPort" />
+</PluginConfig>
