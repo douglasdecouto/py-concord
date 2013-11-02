@@ -1,11 +1,14 @@
+"""
+Test code for interfacing to the Concord panel.
+
+Can be run from the command line.
+"""
 
 import sys
 import threading
 import time
 
-from concord import AlarmPanelInterface
-
-
+import concord
 
 
 class FakeSerial(object):
@@ -39,7 +42,6 @@ class FakeSerial(object):
         if self.curr_char_idx >= len(curr_msg):
             self.curr_char_idx = 0
             self.curr_msg_idx += 1
-        # print "XXXX %r, 0x%02x" % (b, ord(b))
         return b
 
     def read(self, size=1):
@@ -61,7 +63,11 @@ class FakeLog(object):
     def error(self, s):
         self.log(s)
 
-def old_main():
+def run_test():
+    """ 
+    Run some fake messages through the code to make sure there are no
+    obviously broken items.
+    """
     messages = [
         '\n020204',
         '\n037a9b18', # not a real command, but checksum example from docs
@@ -79,69 +85,33 @@ def old_main():
         ]
 
     for m in messages2:
-        bin_msg = decode_message_from_ascii(m)
-        update_message_checksum(bin_msg)
-        ascii_msg = encode_message_to_ascii(bin_msg)
+        bin_msg = concord.decode_message_from_ascii(m)
+        concord.update_message_checksum(bin_msg)
+        ascii_msg = concord.encode_message_to_ascii(bin_msg)
         messages.append('\n' + ascii_msg)
 
-    if len(sys.argv) == 1:
-        # fake test mode
-        panel = AlarmPanelInterface("fake", 0.010, FakeLog(sys.stdout))
-        panel.serial_interface.serdev = FakeSerial(messages)
-        try:
-            panel.message_loop()
-        except StopIteration:
-            pass
+    # fake test mode
+    panel = concord.AlarmPanelInterface("fake", 0.010, FakeLog(sys.stdout))
+    panel.serial_interface.serdev = FakeSerial(messages)
+    try:
+        panel.message_loop()
+    except StopIteration:
         print "No more fake messages"
-
-    else:
-        ser_dev_name = sys.argv[1]
-        panel = AlarmPanelInterface(ser_dev_name, 0.1, FakeLog(sys.stdout))
-        if len(sys.argv) > 2:
-            # transmit mode -- act as dummy panel for testing
-            # purposes.
-            if False:
-                the_thread = threading.Thread(target=panel.message_loop)
-                the_thread.start()
-                for m in messages:
-                    print m
-                    bin_msg = decode_message_from_ascii(m[1:])
-                    panel.enqueue_msg_for_tx(bin_msg[:-1]) # panel method will work out checksum
-                    time.sleep(0.25)
-                    continue
-            else:
-                for m in messages:
-                    time.sleep(1)
-                    panel.serial_interface.serdev.write(m)
-                    print m
-                    c = ''
-                    while len(c) < 1:
-                        time.sleep(0.25)
-                        c = panel.serial_interface.serdev.read(1)
-                    if c == ACK:
-                        print "OK"
-                    else:
-                        print "Error, got 0x%02x" % ord(c)
-
-
-        else:
-            # listen mode
-            def zone_handler(msg):
-                print "ZONE_HANDLER: %r - %r" % (msg['zone_number'], msg['zone_state'])
-            def zone_data_handler(msg):
-                print "ZONE DATA: %r / %s / %r" % (msg['zone_number'], msg['zone_text'], msg['zone_state'])
-
-            panel.register_message_handler('ZONE_STATUS', zone_handler)
-            panel.register_message_handler('ZONE_DATA', zone_data_handler)
-            panel.message_loop()
-
 
 
 def main():
-    assert len(sys.argv) >= 2
+
+    # No args: run basic smoke-test code.
+    if len(sys.argv) == 1:
+        run_test()
+        return
+
+    # Otherwise first argument is serial port device name, run message
+    # loop ad accept basic commands from the terminal so user can poke
+    # at the panel.
     dev_name = sys.argv[1]
 
-    panel = AlarmPanelInterface(dev_name, 0.1, FakeLog(sys.stdout))
+    panel = concord.AlarmPanelInterface(dev_name, 0.1, FakeLog(sys.stdout))
     
     t = threading.Thread(target=panel.message_loop)
     t.start()
@@ -173,9 +143,12 @@ def main():
             elif cmd == 'l':
                 print "SEND REQUEST ALL EQUIPMENT LIST"
                 panel.request_all_equipment()
+            elif cmd == 'z':
+                print "SEND REQUEST ZONES"
+                panel.request_zones()
             elif cmd == 'u':
                 print "SEND REQUEST USERS"
-                panel.request_zones()
+                panel.request_users()
             elif cmd == 'q':
                 break # Quit!
             else:
