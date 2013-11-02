@@ -17,7 +17,6 @@ class Plugin(indigo.PluginBase):
         indigo.PluginBase.__init__(self, pluginId, pluginDisplayName, pluginVersion, pluginPrefs)
         self.processPluginPrefs(pluginPrefs)
 
-
         # TODO: handle multiple partitions
         self.panel = None
         self.panelDev = None
@@ -81,23 +80,32 @@ class Plugin(indigo.PluginBase):
             if self.panel is not None and self.panelDev.id != dev.id:
                 self.error("Can't have more than one panel device; panel already setup at device id %r" % self.panelDev.id)
                 raise Exception("Extra panel device")
+
             dev.updateStateOnServer(key='panelState', value='connecting')
+
             self.panelDev = dev
             self.panel = concord.AlarmPanelInterface(self.serialPortUrl, 0.5, self)
+
+            # Set the plugin object to handle all incoming commands
+            # from the panl via the messageHandler() method.
             self.panel_command_names = { } # code -> display-friendly name
             for code, cmd_info in concord_commands.RX_COMMANDS.iteritems():
                 cmd_id, cmd_name = cmd_info[0], cmd_info[1]
                 self.panel_command_names[cmd_id] = cmd_name
                 self.panel.register_message_handler(cmd_id, self.panelMessageHandler)
+
+            # Ask the panel to tell us all about itself.
             self.panel.request_all_equipment()
             self.panel.request_dynamic_data_refresh()
                 
-            localPropsCopy = dev.pluginProps
-            localPropsCopy["dougTest"] = 10
-            dev.replacePluginPropsOnServer(localPropsCopy)
-
 
         elif dev.deviceTypeId == 'zone':
+            zone_num = dev.states['zoneNumber']
+            if zone_num in self.zoneDevs:
+                self.log("Zone device %s has a duplicate zone number %d, ignoring" % \
+                             (dev.name, zone_num))
+                return
+            self.zoneDevs[zone_num] = dev
             self.updateZoneDeviceState(dev)
 
         self.log("%s" % dev.states)
@@ -111,8 +119,19 @@ class Plugin(indigo.PluginBase):
             self.panel.stop_loop()
             self.panel = None
             self.panelDev = None
-
-
+            
+        elif dev.deviceTypeId == "zone":
+            zone_num = dev.state['zoneNumber']
+            if zone_num not in self.zoneDevs:
+                self.log("Zone device %d - %s is not known, ignoring" % \
+                             (zone_num, dev.name))
+                return
+            known_dev = self.zoneDevs[zone_num]
+            if dev.id != known_dev.id:
+                self.log("Zone device id %d does not match id %d we already know about for zone %d, ignoring" % (dev.id, known_dev.id, zone_num))
+                return
+            del self.zoneDevs[zone_num]
+            
     #def getDeviceStateList(self, dev):
     #    self.log("Get Dev State List: %s, %s, %s" % (dev.name, dev.id, dev.deviceTypeId))
     #
@@ -144,6 +163,39 @@ class Plugin(indigo.PluginBase):
         else:
             self.panel.request_dynamic_data_refresh()
 
+    def menuRefreshAllEquipment(self):
+        self.log("Menu item: Refresh Full Equipment List")
+        if not self.panel:
+            self.log("No panel to refresh")
+        else:
+            self.panel.request_all_equipment()
+
+    def menuRefreshZones(self):
+        self.log("Menu item: Refresh Zones")
+        if not self.panel:
+            self.log("No panel to refresh")
+        else:
+            self.panel.request_zones()
+
+    def menuCreateZoneDevices(self):
+        """
+        Create Indigo Zone devices to match the devices in the panel.
+        """
+        self.log("Creating Indigo Zone devices from panel data")
+        for zone_num, zone_data in self.zones.iteritems():
+            zone_name = zone_data.get('zone_text', 'Unknown - %d' % zone_num)
+            self.log("Creating Zone %d - %s" % (zone_num, zone_name))
+            zone_dev = indigo.device.create(protocol=indigo.kProtocol.Plugin, 
+                                            address="%d" % zone_num,
+                                            name=zone_name,
+                                            description='Alarm zone %d - %s' % (zone_num, zone_name),
+                                            deviceTypeId="zone")
+            self.zoneDevs[zone_num] = zone_dev
+            zone_dev.updateStateOnServer('zoneNumber', zone_num)
+            self.updateZoneDeviceState(zone_dev)
+                                            
+        
+
     # Plugin Actions object callbacks (pluginAction is an Indigo plugin action instance)
     def arm(self, pluginAction):
         self.debugLog("'arm' action called:\n" + str(pluginAction))
@@ -174,11 +226,15 @@ class Plugin(indigo.PluginBase):
 
     # Will be run in the concurrent thread.
     def panelMessageHandler(self, msg):
-        """ msg is dict with received message from the panel. """
+        """ *msg* is dict with received message from the panel. """
         assert self.panelDev is not None
         cmd_id = msg['command_id']
-        self.log("Plugin: handling panel message %s, %s" % \
-                     (cmd_id, self.panel_command_names.get(cmd_id, 'Unknown')))
+
+        # Log about the message, but not for the ones we hear all the
+        # time.  Chaterbox!
+        if cmd_id not in ('TOUCHPAD', 'SIREN_SYNC'):
+            self.log("Plugin: handling panel message %s, %s" % \
+                         (cmd_id, self.panel_command_names.get(cmd_id, 'Unknown')))
 
         if cmd_id == 'PANEL_TYPE':
             self.panelDev.updateStateOnServer('panelType', msg['panel_type'])
@@ -214,6 +270,7 @@ class Plugin(indigo.PluginBase):
                 self.error("No Indigo zone device for zone %s" % zone_name)
 
         else:
-            self.log("Plugin: unhandled panel message %s" % cmd_id)
+            pass
+            # self.log("Plugin: unhandled panel message %s" % cmd_id)
 
     

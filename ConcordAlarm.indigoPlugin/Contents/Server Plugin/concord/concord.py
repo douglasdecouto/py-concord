@@ -1,4 +1,3 @@
-import binascii
 from datetime import datetime
 import Queue
 import serial
@@ -269,8 +268,8 @@ class AlarmPanelInterface(object):
         if cc == ACK:
             if self.tx_pending is None:
                 self.log("Spurious ACK")
-            else:
-                self.log("Expected ACK")
+            #else:
+            #    self.log("Expected ACK")
             self.reset_pending_tx()
         elif cc == NAK:
             if self.tx_pending is None:
@@ -390,6 +389,10 @@ class AlarmPanelInterface(object):
                     self.send_nak()
                     self.error("Bad checksum for message %r" % encode_message_to_ascii(msg))
 
+            # TODO: check here if there is pending input and handle it
+            # by looping again, before worrying about sending out any
+            # commands.
+
             #
             # If there is a pending message awaiting ack, see if it needs
             # to be resent.  If there is no pending message (or the
@@ -431,11 +434,7 @@ class AlarmPanelInterface(object):
         if len(msg) > 3:
             cmd2 = msg[2]
 
-        # For now, ignore SIREN_SYNC and TOUCHPAD commands
-        if False and (cmd1, cmd2) in [(0x22, 0x05), (0x22, 0x09)]:
-            return
-
-        self.log("Handle message %r" % encode_message_to_ascii(msg))
+        # self.log("Handle message %r" % encode_message_to_ascii(msg))
 
         if cmd1 in RX_COMMANDS:
             command = cmd1
@@ -449,23 +448,24 @@ class AlarmPanelInterface(object):
 
         command_id, command_name, command_parser = RX_COMMANDS[command]
         if command_parser is None:
-            self.debug("No parser for command %s %s" % (command_name, command_id))
+            # self.debug("No parser for command %s %s" % (command_name, command_id))
             return
 
-        self.log("Handling command %s %s, %s" % \
-                           (cmd_str, command_id, command_parser.__name__))
+        #self.log("Handling command %s %s, %s" % \
+        #                   (cmd_str, command_id, command_parser.__name__))
         
         try:
             decoded_command = command_parser(msg)
             decoded_command['command_id'] = command_id
-            self.log(repr(decoded_command))
+            #self.log(repr(decoded_command))
             if len(self.message_handlers[command_id]) == 0:
-                self.debug("No handlers for command %s" % command_id)
+                pass
+                #self.debug("No handlers for command %s" % command_id)
             for handler in self.message_handlers[command_id]:
-                self.debug("Calling handler %r" % handler)
+                #self.debug("Calling handler %r" % handler)
                 handler(decoded_command)
         
-            self.log("Finished handling command %s" % command_id)
+            #self.log("Finished handling command %s" % command_id)
         except Exception, ex:
             self.error("Problem handling command %r\n%r" % \
                            (ex, encode_message_to_ascii(msg)))
@@ -478,6 +478,11 @@ class AlarmPanelInterface(object):
 
     def request_all_equipment(self):
         msg = build_cmd_equipment_list(request_type=0)
+        self.enqueue_msg_for_tx(msg)
+
+    def request_zones(self):
+        req = EQPT_LIST_REQ_TYPES['ZONE_DATA']
+        msg = build_cmd_equipment_list(request_type=req)
         self.enqueue_msg_for_tx(msg)
 
     def request_users(self):

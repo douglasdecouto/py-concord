@@ -4,4 +4,16 @@
     <Name>Refresh Dynamic State</Name>
     <CallbackMethod>menuRefreshDynamicState</CallbackMethod>
   </MenuItem>
+  <MenuItem id="refreshAllEquipment">
+    <Name>Refresh Complete Equipment List</Name>
+    <CallbackMethod>menuRefreshAllEquipment</CallbackMethod>
+  </MenuItem>
+  <MenuItem id="refreshZones">
+    <Name>Refresh Zone List and States</Name>
+    <CallbackMethod>menuRefreshZones</CallbackMethod>
+  </MenuItem>
+  <MenuItem id="createZones">
+    <Name>Create Indigo Zone Devices from Panel</Name>
+    <CallbackMethod>menuCreateZoneDevices</CallbackMethod>
+  </MenuItem>
 </MenuItems>
