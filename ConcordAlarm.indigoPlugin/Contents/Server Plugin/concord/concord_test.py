@@ -58,10 +58,11 @@ class FakeLog(object):
         self.f = f
     def log(self, s):
         self.f.write(s + "\n")
-    def debug_msg(self, s):
-        self.log(s)
-    def error(self, s):
-        self.log(s)
+    def error(self, s): self.log(s)
+    def warn(self, s): self.log(s)
+    def info(self, s): self.log(s)
+    def debug(self, s): self.log(s)
+    def debug_verbose(self, s): self.log(s)
 
 def run_test():
     """ 

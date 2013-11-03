@@ -363,6 +363,58 @@ def cmd_user_data(msg):
         d['user_code'] = '%04d' % bcd_decode(msg[5:6])
     return d
     
+def cmd_sched_data(msg):
+    return { }
+
+def cmd_sched_event_data(msg):
+    return { }
+
+def cmd_light_attach(msg):
+    return { }
+
+def cmd_siren_setup(msg):
+    return { }
+
+def cmd_siren_go(msg):
+    return { }
+
+def cmd_siren_stop(msg):
+    return { }
+
+def cmd_feat_state(msg):
+    return { }
+
+def cmd_temp(msg):
+    return { }
+
+def cmd_time_and_date(msg):
+    return { }
+
+def cmd_lights_state(msg):
+    return { }
+
+def cmd_user_lights(msg):
+    return { }
+
+def cmd_keyfob(msg):
+    return { }
+
+def cmd_clear_image(msg):
+    return { }
+
+def cmd_eqpt_list_done(msg):
+    return { }
+
+def cmd_superbus_dev_data(msg):
+    return { }
+
+def cmd_superbus_dev_cap(msg):
+    return { }
+
+def cmd_output_data(msg):
+    return { }
+
+
 
 # These are commands sent by the panel and received by the automation
 # device (that is, this software).  Some of these may be send
@@ -376,42 +428,42 @@ RX_COMMANDS = {
     # Following are received in response to equipment list requests.
     0x03: ('ZONE_DATA',    "Zone Data", cmd_zone_data),
     0x04: ('PART_DATA',    "Partition Data", cmd_partition_data),
-    0x05: ('BUS_DEV_DATA', "SuperBus Device Data", None),
-    0x06: ('BUS_CAP_DATA', "SuperBus Device Capabilities Data", None),
-    0x07: ('OUTPUT_DATA',  "Output Data", None),
+    0x05: ('BUS_DEV_DATA', "SuperBus Device Data", cmd_superbus_dev_data),
+    0x06: ('BUS_CAP_DATA', "SuperBus Device Capabilities Data", cmd_superbus_dev_cap),
+    0x07: ('OUTPUT_DATA',  "Output Data", cmd_output_data),
 
     # 0x08 is sent after all 0x03 and 0x05 (zone & SuperBus device)
     # commands have been sent in response to an equipment list
     # request.
-    0x08: ('EQPT_LIST_DONE', "Equipment List Complete", None),
+    0x08: ('EQPT_LIST_DONE', "Equipment List Complete", cmd_eqpt_list_done),
 
     0x09: ('USER_DATA',    "User Data", cmd_user_data),
-    0x0a: ('SCHED_DATA',   "Schedule Data", None),
-    0x0b: ('EVENT_DATA',   "Scheduled Event Data", None),
-    0x0c: ('LIGHT_ATTACH', "Light to Sensor Attachment", None),
+    0x0a: ('SCHED_DATA',   "Schedule Data", cmd_sched_data),
+    0x0b: ('EVENT_DATA',   "Scheduled Event Data", cmd_sched_event_data),
+    0x0c: ('LIGHT_ATTACH', "Light to Sensor Attachment", cmd_light_attach),
     # End of equipment list responses.
 
-    0x20: ('CLEAR_IMAGE', "Clear Automation Image", None),
+    0x20: ('CLEAR_IMAGE', "Clear Automation Image", cmd_clear_image),
 
     0x21: ('ZONE_STATUS',        "Zone Status", cmd_zone_status),
     (0x22, 0x01): ('ARM_LEVEL',  "Arming Level", cmd_arming_level),
     (0x22, 0x02): ('ALARM',      "Alarm/Trouble",  cmd_alarm_trouble),
     (0x22, 0x03): ('DELAY',      "Entry/Exit Delay", cmd_entry_exit_delay),
-    (0x22, 0x04): ('SIREN_SETUP', "Siren Setup", None),
+    (0x22, 0x04): ('SIREN_SETUP', "Siren Setup", cmd_siren_setup),
     (0x22, 0x05): ('SIREN_SYNC',  "Siren Synchronize", cmd_siren_sync),
-    (0x22, 0x06): ('SIREN_GO',    "Siren Go", None),
+    (0x22, 0x06): ('SIREN_GO',    "Siren Go", cmd_siren_go),
 
     (0x22, 0x09): ('TOUCHPAD', "Touchpad Display", cmd_touchpad),
 
-    (0x22, 0x0b): ('SIREN_STOP', "Siren Stop", None),
+    (0x22, 0x0b): ('SIREN_STOP', "Siren Stop", cmd_siren_stop),
 
-    (0x22, 0x0c): ('FEAT_STATE', "Feature State", None),
-    (0x22, 0x0d): ('TEMP', "Temperature", None),
-    (0x22, 0x0e): ('TIME', "Time and Date", None),
+    (0x22, 0x0c): ('FEAT_STATE', "Feature State", cmd_feat_state),
+    (0x22, 0x0d): ('TEMP', "Temperature", cmd_temp),
+    (0x22, 0x0e): ('TIME', "Time and Date", cmd_time_and_date),
 
-    (0x23, 0x01): ('LIGHTS_STATE', "Lights State Command", None),
-    (0x23, 0x02): ('USER_LIGHTS',  "User Lights Command", None),
-    (0x23, 0x03): ('KEYFOB_CMD',   "Keyfob Command", None),
+    (0x23, 0x01): ('LIGHTS_STATE', "Lights State Command", cmd_lights_state),
+    (0x23, 0x02): ('USER_LIGHTS',  "User Lights Command", cmd_user_lights),
+    (0x23, 0x03): ('KEYFOB_CMD',   "Keyfob Command", cmd_keyfob),
 }
 
 EQPT_LIST_REQ_TYPES = {

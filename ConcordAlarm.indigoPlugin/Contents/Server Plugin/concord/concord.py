@@ -60,9 +60,6 @@ class SerialInterface(object):
                                     stopbits=CONCORD_STOPBITS, timeout=timeout_secs,
                                     xonxoff=False, rtscts=False, dsrdtr=False)
 
-    def log(self, s):
-        self.logger.log(s)
-
     def message_chars_maybe_available(self):
         return self.serdev.inWaiting() > 0
 
@@ -83,7 +80,7 @@ class SerialInterface(object):
             if byte_read == '':
                 # Timeout
                 return None
-            #self.log("wait for message start, byte_read=%r" % byte_read)
+            self.logger.debug_verbose("Wait for message start, byte_read=%r" % byte_read)
             if byte_read in CTRL_CHARS:
                 self.control_char_cb(byte_read)
             # Discard the unrecognized character
@@ -92,7 +89,6 @@ class SerialInterface(object):
 
     def _read1(self):
         c = self.serdev.read(size=1)
-        #print "READ %r" % c
         return c
 
     def _try_to_read(self, n):
@@ -112,7 +108,6 @@ class SerialInterface(object):
                 chars_read.append(one_char)
         return chars_read, ctrl_chars
         
-
     def read_next_message(self):
         """
         Read the next message from the serial port, assuming the
@@ -181,7 +176,7 @@ class SerialInterface(object):
         message-start linefeed character.
         """
         framed_msg = MSG_START + encode_message_to_ascii(msg) 
-        self.log("write_message: %r" % framed_msg)
+        self.logger.debug_verbose("write_message: %r" % framed_msg)
         self.serdev.write(framed_msg)
 
     def write(self, data):
@@ -264,21 +259,21 @@ class AlarmPanelInterface(object):
         self.message_handlers[command_id].append(handler_fn)
 
     def ctrl_char_cb(self, cc):
-        self.log("Ctrl char %r" % cc)
+        self.logger.debug_verbose("Ctrl char %r" % cc)
         if cc == ACK:
             if self.tx_pending is None:
-                self.log("Spurious ACK")
-            #else:
-            #    self.log("Expected ACK")
+                self.logger.debug("Spurious ACK")
+            else:
+                self.logger.debug_verbose("Expected ACK")
             self.reset_pending_tx()
         elif cc == NAK:
             if self.tx_pending is None:
-                self.log("Spurious NAK")
+                self.logger.debug("Spurious NAK")
             else:
-                self.log("Possible NAK")
+                self.logger.debug("Possible NAK")
             self.maybe_resend_message("NAK")
         else:
-            self.log("Unknown control char 0x%02x" % cc)
+            self.logger.info("Unknown control char 0x%02x" % cc)
 
     def tx_timeout_exceded(self):
         assert self.tx_pending is not None
@@ -299,19 +294,19 @@ class AlarmPanelInterface(object):
         self.tx_pending = msg
         if retry:
             self.tx_num_attempts += 1
-            self.log("Resending message, attempt %d: %r" % \
-                         (self.tx_num_attempts, encode_message_to_ascii(msg)))
+            self.logger.warn("Resending message, attempt %d: %r" % \
+                                  (self.tx_num_attempts, encode_message_to_ascii(msg)))
         else:
             self.tx_num_attempts = 1
-        self.log("Sending message (retry=%d) %r" % \
+            self.logger.debug("Sending message (retry=%d) %r" % \
                      (self.tx_num_attempts, encode_message_to_ascii(msg)))
         self.tx_time = datetime.now()
         self.serial_interface.write_message(msg)
 
     def maybe_resend_message(self, reason):
         if self.tx_num_attempts >= MAX_RESENDS:
-            self.log("Unable to send message (%s), too many attempts (%d): %r" % \
-                         (reason, MAX_RESENDS, encode_message_to_ascii(self.tx_pending)))
+            self.logger.error("Unable to send message (%s), too many attempts (%d): %r" % \
+                                  (reason, MAX_RESENDS, encode_message_to_ascii(self.tx_pending)))
             self.reset_pending_tx()
         else:
             self.send_message(self.tx_pending, retry=True)
@@ -327,14 +322,6 @@ class AlarmPanelInterface(object):
         """
         msg.append(compute_checksum(msg))
         self.tx_queue.put(msg)
-
-
-    def log(self, s):
-        self.logger.log(s)
-    def debug(self, s):
-        self.logger.debug_msg(s)
-    def error(self, s):
-        self.logger.error(s)
 
     def stop_loop(self):
         self.tx_queue.put(STOP)
@@ -370,7 +357,7 @@ class AlarmPanelInterface(object):
                     msg = self.serial_interface.read_next_message()
                 except CommException, ex:
                     self.send_nak()
-                    self.log(repr(ex))
+                    self.logger.error(repr(ex))
                     continue
 
                 msg_time = datetime.now()
@@ -379,7 +366,7 @@ class AlarmPanelInterface(object):
                     # Message too short, need at least length byte,
                     # command byte, and checksum byte.
                     self.send_nak()
-                    self.error("Message too short: %r" % encode_message_to_ascii(msg))
+                    self.logger.error("Message too short: %r" % encode_message_to_ascii(msg))
 
                 if validate_message_checksum(msg):
                     self.send_ack()
@@ -387,7 +374,7 @@ class AlarmPanelInterface(object):
                 else:
                     # Bad checksum
                     self.send_nak()
-                    self.error("Bad checksum for message %r" % encode_message_to_ascii(msg))
+                    self.logger.error("Bad checksum for message %r" % encode_message_to_ascii(msg))
 
             # TODO: check here if there is pending input and handle it
             # by looping again, before worrying about sending out any
@@ -421,8 +408,8 @@ class AlarmPanelInterface(object):
 
             secs_since_print = total_secs(datetime.now() - loop_last_print_at)
             if secs_since_print > 20:
-                print "Looping %d" % \
-                    total_secs(datetime.now() - loop_start_at)
+                self.logger.debug_verbose("Looping %d" % \
+                                              total_secs(datetime.now() - loop_start_at))
                 loop_last_print_at = datetime.now()
 
 
@@ -443,32 +430,31 @@ class AlarmPanelInterface(object):
             command = (cmd1, cmd2)
             cmd_str = "0x%02x/0x%02x" % (command[0], command[1])
         else:
-            self.error("Unknown command for message %r" % encode_message_to_ascii(msg))
+            self.logger.error("Unknown command for message %r" % encode_message_to_ascii(msg))
             return
 
         command_id, command_name, command_parser = RX_COMMANDS[command]
         if command_parser is None:
-            # self.debug("No parser for command %s %s" % (command_name, command_id))
+            self.logger.debug_verbose("No parser for command %s %s" % (command_name, command_id))
             return
 
-        #self.log("Handling command %s %s, %s" % \
-        #                   (cmd_str, command_id, command_parser.__name__))
+        self.logger.debug_verbose("Handling command %s %s, %s" % \
+                                      (cmd_str, command_id, command_parser.__name__))
         
         try:
             decoded_command = command_parser(msg)
             decoded_command['command_id'] = command_id
-            #self.log(repr(decoded_command))
+            self.logger.debug_verbose(repr(decoded_command))
             if len(self.message_handlers[command_id]) == 0:
-                pass
-                #self.debug("No handlers for command %s" % command_id)
+                self.logger.debug_verbose("No handlers for command %s" % command_id)
             for handler in self.message_handlers[command_id]:
-                #self.debug("Calling handler %r" % handler)
+                self.logger.debug_verbose("Calling handler %r" % handler)
                 handler(decoded_command)
         
-            #self.log("Finished handling command %s" % command_id)
+            self.logger.debug_verbose("Finished handling command %s" % command_id)
         except Exception, ex:
-            self.error("Problem handling command %r\n%r" % \
-                           (ex, encode_message_to_ascii(msg)))
+            self.logger.error("Problem handling command %r\n%r" % \
+                                  (ex, encode_message_to_ascii(msg)))
 
 
     def send_nak(self):

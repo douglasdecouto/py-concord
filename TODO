@@ -1,0 +1,24 @@
+- when restarting plugin, close serial port if already open ????
+- flush input & output on opening
+- TCP proxy that speaks 'Concord' (AD2USB ser2sock?)pl
+- create new event - 'PROXY TROUBLE'  that the prxy can send to the plugin!
+- Keep alive
+- Fix zone text handling: spaces, backspace, sentence case
+- fixup zone states: unknown, tripped, OK, problem
+- comm loop: be gredy about reading data before sending any; think panel doesn't want to deal with incoming messages while it is waiting for acks on outgoing
+X - Debug mode handling / log levels
+- split out the two lines for LCD display
+- Handle multiple partitions
+- Detect '*' in LCD output; expose to Indigo (but would this only tell us something we could find out from another query -- e.g. if it's * but that's only because windows are open, then who cares; how to detect other issues on top of that?)  AD2USB had bug with sending '*', perhaps we have same big although different devices?
+
+- Structure: connect Panel device to serial port, or plugin?
+
+Bigger:
+- integrate with Honey
+- generic alarm plugin?
+
+Models:
+- Cynical Honey
+- Caddx
+- AD2USB -- also for Honeywell, like Cynical
+- DSC

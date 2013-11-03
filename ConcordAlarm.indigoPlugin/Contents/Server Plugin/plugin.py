@@ -1,5 +1,7 @@
-#! /usr/bin/env python
-# -*- coding: utf-8 -*-
+"""
+
+"""
+
 
 import os
 import sys
@@ -10,39 +12,78 @@ from concord import concord, concord_commands
 # Note the "indigo" module is automatically imported and made available inside
 # our global name space by the host process.
 
+# Logging.  Roll our own because we want two levels of DEBUG.
+LOG_ERR    = 0
+LOG_WARN   = 1
+LOG_INFO   = 2
+LOG_DEBUG  = 3
+LOG_DEBUGV = 4 # verbose debug
+
+LOG_PREFIX = {
+    LOG_ERR: "ERROR",
+    LOG_WARN: "WARNING",
+    LOG_INFO: "INFO",
+    LOG_DEBUG: "DEBUG",
+    LOG_DEBUGV: "DEBUG VERBOSE",
+}
+
+LOG_CONFIG = {
+    'error': LOG_ERR,
+    'warn': LOG_WARN,
+    'info': LOG_INFO,
+    'debug': LOG_DEBUG,
+    'debugVerbose': LOG_DEBUGV,
+}
+
+class Logger(object):
+    def __init__(self, lev=LOG_INFO):
+        self.log_fn = indigo.server.log
+        self.level = lev
+    def set_level(self, lev):
+        assert lev >= 0 and lev <= LOG_DEBUGV
+        self.level = lev
+    def log(self, msg, level=LOG_INFO):
+        if level == LOG_ERR:
+            indigo.server.log(msg, isError=True)
+        elif level <= self.level:
+            indigo.server.log("[%s] %s" % (LOG_PREFIX[level], msg))
+    def error(self, msg): self.log(msg, level=LOG_ERR)
+    def warn(self, msg): self.log(msg, level=LOG_WARN)
+    def info(self, msg): self.log(msg, level=LOG_INFO)
+    def debug(self, msg): self.log(msg, level=LOG_DEBUG)
+    def debug_verbose(self, msg): self.log(msg, level=LOG_DEBUGV)
+    def log_always(self, msg): indigo.server.log(msg)
 
 class Plugin(indigo.PluginBase):
 
     def __init__(self, pluginId, pluginDisplayName, pluginVersion, pluginPrefs):
         indigo.PluginBase.__init__(self, pluginId, pluginDisplayName, pluginVersion, pluginPrefs)
-        self.processPluginPrefs(pluginPrefs)
+        self.logger = Logger(lev=LOG_INFO)
+
+        self.processPluginConfigPrefs(pluginPrefs)
 
         # TODO: handle multiple partitions
         self.panel = None
         self.panelDev = None
+        self.panelInitialQueryDone = False
         self.zones = { } # zone number -> dict of zone info, i.e. output of cmd_zone_data
         self.zoneDevs = { } # zone number -> dict of active zone devices
 
+
     def __del__(self):
         indigo.PluginBase.__del__(self)
-        
-    def log(self, msg):
-        indigo.server.log(msg)
-    def debug_msg(self, msg):
-        indigo.server.log(msg)
-    def error(self, msg):
-        indigo.server.log(msg)
 
     def startup(self):
-        self.debugLog(u"startup called")
+        self.logger.debug("startup called")
 
     def shutdown(self):
-        self.debugLog(u"shutdown called")
+        self.logger.debug("shutdown called")
                 
-
+    #
     # Plugin prefs methods
+    #
     def validatePrefsConfigUi(self, valuesDict):
-        self.log("Validating prefs: %r" % (valuesDict))
+        self.logger.debug("Validating prefs: %r" % (valuesDict))
         errorsDict = indigo.Dict()
         self.validateSerialPortUi(valuesDict, errorsDict, "panelSerialPort")
         
@@ -57,34 +98,46 @@ class Plugin(indigo.PluginBase):
         return (True, valuesDict)
 
     def closedPrefsConfigUi(self, valuesDict, userCancelled):
-        self.log("Closed prefs config...")
+        self.logger.debug("Closed prefs config...")
         if not userCancelled:
-            self.processPluginPrefs(valuesDict)
+            self.processPluginConfigPrefs(valuesDict)
 
-    def processPluginPrefs(self, pluginPrefsDict):
-        self.log("Loading plugin prefs...")
+    def processPluginConfigPrefs(self, pluginPrefsDict):
+        self.logger.debug("Loading plugin prefs...")
         self.serialPortUrl = self.getSerialPortUrl(pluginPrefsDict, 'panelSerialPort')        
-        self.log("Serial port is: %s" % self.serialPortUrl)
+        self.logger.info("Serial port is: %s" % self.serialPortUrl)
+        # Need to keep and reconfigure same logger object as we have
+        # gone and passed it off to subsystems like the
+        # AlarmPanelInterface.
+        self.logger.set_level(LOG_CONFIG.get(pluginPrefsDict.get('logLevel', 'info'), LOG_INFO))
+        self.keepAlive = pluginPrefsDict.get('keepAlive', False)
+        self.logger.log_always("New prefs: Keep Alive=%r, Log Level=%s" % \
+                                   (self.keepAlive, LOG_PREFIX[self.logger.level]))
 
-
+    #
     # Device methods
-
+    #
     def validateDeviceConfigUi(self, valuesDict, typeId, devId):
-        self.log("Validating Device...")
-
+        self.logger.debug("Validating Device...")
         return (True, valuesDict)
 
     def deviceStartComm(self, dev):
-        self.log("Device start comm: %s, %s, %s" % (dev.name, dev.id, dev.deviceTypeId))
+        self.logger.debug("Device start comm: %s, %s, %s" % (dev.name, dev.id, dev.deviceTypeId))
+
         if dev.deviceTypeId == "concordPanel":
             if self.panel is not None and self.panelDev.id != dev.id:
-                self.error("Can't have more than one panel device; panel already setup at device id %r" % self.panelDev.id)
+                self.logger.error("Can't have more than one panel device; panel already setup at device id %r" % self.panelDev.id)
                 raise Exception("Extra panel device")
 
             dev.updateStateOnServer(key='panelState', value='connecting')
 
             self.panelDev = dev
-            self.panel = concord.AlarmPanelInterface(self.serialPortUrl, 0.5, self)
+            try:
+                self.panel = concord.AlarmPanelInterface(self.serialPortUrl, 0.5, self.logger)
+            except Exception, ex:
+                dev.updateStateOnServer("panelState", "error")
+                dev.setErrorStateOnServer("Unable to connect")
+                raise
 
             # Set the plugin object to handle all incoming commands
             # from the panl via the messageHandler() method.
@@ -95,43 +148,52 @@ class Plugin(indigo.PluginBase):
                 self.panel.register_message_handler(cmd_id, self.panelMessageHandler)
 
             # Ask the panel to tell us all about itself.
+            dev.updateStateOnServer("panelState", "exploring")
+
+            self.logger.debug("Querying panel for state")
             self.panel.request_all_equipment()
             self.panel.request_dynamic_data_refresh()
-                
+            
+            self.panelInitialQueryDone = False
 
         elif dev.deviceTypeId == 'zone':
             zone_num = dev.states['zoneNumber']
             if zone_num in self.zoneDevs:
-                self.log("Zone device %s has a duplicate zone number %d, ignoring" % \
-                             (dev.name, zone_num))
+                self.logger.warn("Zone device %s has a duplicate zone number %d, ignoring" % \
+                               (dev.name, zone_num))
                 return
             self.zoneDevs[zone_num] = dev
             self.updateZoneDeviceState(dev)
 
-        self.log("%s" % dev.states)
 
     def deviceStopComm(self, dev):
-        self.log("Device stop comm: %s, %s, %s" % (dev.name, dev.id, dev.deviceTypeId))
+        self.logger.debug("Device stop comm: %s, %s, %s" % (dev.name, dev.id, dev.deviceTypeId))
+
         if dev.deviceTypeId == "concordPanel":
-            if self.panel is None or self.panelDev.id != dev.id:
-                self.error("Stopping a panel we don't know about at device id %r" % dev.id)
+            if self.panelDev is None or self.panelDev.id != dev.id:
+                self.logger.error("Stopping a panel we don't know about at device id %r" % dev.id)
                 raise Exception("Extra panel device")
-            self.panel.stop_loop()
+            # AlarmPanel object may never have been successfully
+            # started (e.g. was unable to open serial port in the
+            # first place).
+            if self.panel is not None:
+                self.panel.stop_loop()
             self.panel = None
             self.panelDev = None
             
         elif dev.deviceTypeId == "zone":
-            zone_num = dev.state['zoneNumber']
+            zone_num = dev.states['zoneNumber']
             if zone_num not in self.zoneDevs:
-                self.log("Zone device %d - %s is not known, ignoring" % \
+                self.logger.warn("Zone device %d - %s is not known, ignoring" % \
                              (zone_num, dev.name))
                 return
             known_dev = self.zoneDevs[zone_num]
             if dev.id != known_dev.id:
-                self.log("Zone device id %d does not match id %d we already know about for zone %d, ignoring" % (dev.id, known_dev.id, zone_num))
+                self.logger.warn("Zone device id %d does not match id %d we already know about for zone %d, ignoring" % (dev.id, known_dev.id, zone_num))
                 return
             del self.zoneDevs[zone_num]
             
+
     #def getDeviceStateList(self, dev):
     #    self.log("Get Dev State List: %s, %s, %s" % (dev.name, dev.id, dev.deviceTypeId))
     #
@@ -151,54 +213,93 @@ class Plugin(indigo.PluginBase):
                 self.panel.message_loop()
 
         except self.StopThread:
-            self.log("Got StopThread in runConcurrentThread()")
+            self.logger.debug("Got StopThread in runConcurrentThread()")
             pass    
 
 
     # MenuItems.xml actions:
     def menuRefreshDynamicState(self):
-        self.log("Menu item: Refresh Dynamic State")
+        self.logger.debug("Menu item: Refresh Dynamic State")
         if not self.panel:
-            self.log("No panel to refresh")
+            self.logger.warn("No panel to refresh")
         else:
             self.panel.request_dynamic_data_refresh()
 
     def menuRefreshAllEquipment(self):
-        self.log("Menu item: Refresh Full Equipment List")
+        self.logger.debug("Menu item: Refresh Full Equipment List")
         if not self.panel:
-            self.log("No panel to refresh")
+            self.logger.warn("No panel to refresh")
         else:
             self.panel.request_all_equipment()
 
     def menuRefreshZones(self):
-        self.log("Menu item: Refresh Zones")
+        self.logger.debuig("Menu item: Refresh Zones")
         if not self.panel:
-            self.log("No panel to refresh")
+            self.logger.warn("No panel to refresh")
         else:
             self.panel.request_zones()
 
     def menuCreateZoneDevices(self):
         """
-        Create Indigo Zone devices to match the devices in the panel.
+        Create or update Indigo Zone devices to match the devices in
+        the panel.
         """
-        self.log("Creating Indigo Zone devices from panel data")
+        self.logger.debug("Creating Indigo Zone devices from panel data")
         for zone_num, zone_data in self.zones.iteritems():
-            zone_name = zone_data.get('zone_text', 'Unknown - %d' % zone_num)
-            self.log("Creating Zone %d - %s" % (zone_num, zone_name))
-            zone_dev = indigo.device.create(protocol=indigo.kProtocol.Plugin, 
-                                            address="%d" % zone_num,
-                                            name=zone_name,
-                                            description='Alarm zone %d - %s' % (zone_num, zone_name),
-                                            deviceTypeId="zone")
-            self.zoneDevs[zone_num] = zone_dev
-            zone_dev.updateStateOnServer('zoneNumber', zone_num)
-            self.updateZoneDeviceState(zone_dev)
-                                            
+            zone_name = zone_data.get('zone_text', '')
+            zone_type = zone_data.get('zone_type', '')
+            if zone_type == '':
+                zone_type = 'Unknown type'
+            if zone_name == '':
+                if zone_type == 'RF Touchpad':
+                    zone_name = 'RF Touchpad - %d' % zone_num
+                else:
+                    zone_name = 'Unknown Zone - %d' % zone_num
+            if zone_num not in self.zoneDevs:
+                self.logger.info("Creating Zone %d - %s" % (zone_num, zone_name))
+                zone_dev = indigo.device.create(protocol=indigo.kProtocol.Plugin, 
+                                                address="%d" % zone_num,
+                                                name=zone_name,
+                                                description=zone_type,
+                                                deviceTypeId="zone")
+                self.zoneDevs[zone_num] = zone_dev
+                zone_dev.updateStateOnServer('zoneNumber', zone_num)
+            else:
+                self.logger.info("Updating Zone %d - %s" % (zone_num, zone_name))
+                zone_dev = self.zoneDevs[zone_num]
+                dev.name = zone_name
+                dev.description = zone_type
+        self.updateZoneDeviceState(zone_dev)
         
+                                    
+    def menuDumpZonesToLog(self):
+        """
+        Print to log our iternal zone state information; cross-check
+        Indigo devices against this state.
+        """
+        for zone_num, zone_data in self.zones.iteritems():
+            zone_name = zone_data.get('zone_text', 'Unknown')
+            zone_type = zone_data.get('zone_type', 'Unknown')
+            if zone_num in self.zoneDevs:
+                indigo_id = self.zoneDevs[zone_num].id
+            else:
+                indigo_id = None
+            self.logger.log_always("Zone %d, %s, Indigo device %r, state=%r, partition=%d, type=%s" % \
+                                       (zone_num, zone_name,  indigo_id, zone_data['zone_state'],
+                                        zone_data['partition_number'], zone_type))
+
+        for zone_num, dev in self.zoneDevs.iteritems():
+            if zone_num in self.zones:
+                # We already know about this stone in our official
+                # internal state.
+                continue
+            self.logger.log_always("No zone info for Indigo device %r, id=%d, state=%s" % \
+                                       (dev.name, dev.id, dev.states['zoneState']))
+
 
     # Plugin Actions object callbacks (pluginAction is an Indigo plugin action instance)
     def arm(self, pluginAction):
-        self.debugLog("'arm' action called:\n" + str(pluginAction))
+        self.logger.debug("'arm' action called:\n" + str(pluginAction))
 
     # Device config callbacks & actions
     def zoneFilter(self, filter="", valuesDict=None, typeId="", targetId=0):
@@ -208,8 +309,9 @@ class Plugin(indigo.PluginBase):
     def updateZoneDeviceState(self, zone_dev):
         zone_num = zone_dev.states['zoneNumber']
         if zone_num not in self.zones:
-            self.error("Unable to update Indigo zone device %s - %d; no knowledge of that zone" % \
-                           (zone_dev.name, zone_num))
+            self.logger.debug("Unable to update Indigo zone device %s - %d; no knowledge of that zone" % \
+                                 (zone_dev.name, zone_num))
+            zone_dev.updateStateOnServer('zoneState', 'unknown')
             return
         data = self.zones[zone_num]
         if 'zone_type' in data:
@@ -224,6 +326,29 @@ class Plugin(indigo.PluginBase):
         zone_dev.updateStateOnServer('isTrouble', 'Trouble' in zone_state)
         zone_dev.updateStateOnServer('isBypassed', 'Bypassed' in zone_state)
 
+        # Update the summary zoneState
+        bypassed = 'Bypass' in zone_state
+        if len(zone_state) == 0:
+            zs = 'normal'
+        elif 'Alarm' in zone_state:
+            zs = 'alarm'
+        elif 'Faulted' in zone_state or 'Trouble' in zone_state:
+            zs = 'fault'
+        elif 'Tripped' in zone_state:
+            zs = 'tripped'
+        elif 'Bypassed' in zone_state:
+            zs = 'bypassed'
+        else:
+            zs = 'unknown'
+            
+        if bypassed and zs in ('normal', 'tripped'):
+            zs += '_bypassed'
+
+        zone_dev.updateStateOnServer('zoneState', zs)
+        if zs in ('fault', 'alarm'):
+            zone_dev.setErrorStateOnServer(', '.join(zone_state))
+
+
     # Will be run in the concurrent thread.
     def panelMessageHandler(self, msg):
         """ *msg* is dict with received message from the panel. """
@@ -231,10 +356,15 @@ class Plugin(indigo.PluginBase):
         cmd_id = msg['command_id']
 
         # Log about the message, but not for the ones we hear all the
-        # time.  Chaterbox!
-        if cmd_id not in ('TOUCHPAD', 'SIREN_SYNC'):
-            self.log("Plugin: handling panel message %s, %s" % \
-                         (cmd_id, self.panel_command_names.get(cmd_id, 'Unknown')))
+        # time.  Chatterbox!
+        if cmd_id in ('TOUCHPAD', 'SIREN_SYNC'):
+            # These message come all the time so only print about them
+            # if the user signed up for extra verbose debug logging.
+            log_fn = self.logger.debug_verbose
+        else:
+            log_fn = self.logger.debug
+        log_fn("Handling panel message %s, %s" % \
+                   (cmd_id, self.panel_command_names.get(cmd_id, 'Unknown')))
 
         if cmd_id == 'PANEL_TYPE':
             self.panelDev.updateStateOnServer('panelType', msg['panel_type'])
@@ -251,12 +381,12 @@ class Plugin(indigo.PluginBase):
             else:
                 zone_name = '%d' % zone_num
             if zone_num in self.zones:
-                self.log("Updating zone %s with %s message" % (zone_name, cmd_id))
+                self.logger.info("Updating zone %s with %s message" % (zone_name, cmd_id))
                 zone_info = self.zones[zone_num]
                 zone_info.update(msg)
                 del zone_info['command_id']
             else:
-                self.log("Learning new zone %s from %s message" % (zone_name, cmd_id))
+                self.logger.info("Learning new zone %s from %s message" % (zone_name, cmd_id))
                 zone_info = msg.copy()
                 del zone_info['command_id']
                 self.zones[zone_num] = zone_info
@@ -265,12 +395,28 @@ class Plugin(indigo.PluginBase):
             # zone.
             if zone_num in self.zoneDevs:
                 self.updateZoneDeviceState(self.zoneDevs[zone_num])
-        
             else:
-                self.error("No Indigo zone device for zone %s" % zone_name)
+                self.logger.warn("No Indigo zone device for zone %s" % zone_name)
+
+        elif cmd_id == 'EQPT_LIST_DONE':
+            if not self.panelInitialQueryDone:
+                self.panelDev.updateStateOnServer('panelState', 'ready')
+                self.panelInitialQueryDone = True
+
+        elif cmd_id == 'ALARM':
+            # XXX how to reset from this state?
+            # What other actions?  Triggers I think...
+            self.panelDev.updateStateOnServer('panelState', 'alarm')
+
+        elif cmd_id == 'ARM_LEVEL':
+            # 
+            pass
+
+        elif cmd_id == 'CLEAR_IMAGE':
+            # Logic goes here to empty all of our state and reload it.
+            pass
 
         else:
-            pass
-            # self.log("Plugin: unhandled panel message %s" % cmd_id)
+            self.logger.debug_verbose("Plugin: unhandled panel message %s" % cmd_id)
 
     

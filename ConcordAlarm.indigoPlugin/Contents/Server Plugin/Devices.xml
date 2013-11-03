@@ -41,11 +41,11 @@
       <State id="panelState" defaultValue="preparing" readonly="YES">
 	<ValueType>
 	  <List>
-	    <Option value="preparing">Preparing</Option>
 	    <Option value="connecting">Connecting</Option>
 	    <Option value="exploring">Exploring</Option>
 	    <Option value="ready">Ready</Option>
-	    <Option value="unavailable">Unavailable</Option>
+	    <Option value="error">Error</Option>
+            <Option value="alarm">Alarm</Option>
 	  </List>
 	</ValueType>
 	<TriggerLabel>System State</TriggerLabel>
@@ -59,7 +59,26 @@
   <Device type="custom" id="zone">
     <Name>Zone</Name>
     <States>
-      <State id="isNormal" defaultValue="True">
+      <!-- Summary state suitable for showing in Indogo device summary. -->
+      <State id="zoneState" defaultValue="Unknown">
+	<ValueType>
+          <List>
+            <Option value="unknown">Uknown</Option>
+            <Option value="fault">fault</Option>
+            <Option value="alarm">Alarm</Option>
+            <Option value="normal">Closed</Option>
+            <Option value="tripped">Open</Option>
+            <Option value="bypassed">Bypassed</Option>
+            <Option value="normal_bypassed">Closed (bypassed)</Option>
+            <Option value="tripped_bypassed">Open (bypassed)</Option>
+          </List>
+        </ValueType>
+	<TriggerLabel>Zone state is</TriggerLabel>
+	<ControlPageLabel>Zone state</ControlPageLabel>
+      </State>
+
+
+      <State id="isNormal" defaultValue="False">
 	<ValueType>Boolean</ValueType>
 	<TriggerLabel>Zone is Normal</TriggerLabel>
 	<ControlPageLabel>Zone Normal</ControlPageLabel>
@@ -89,6 +108,7 @@
 	<TriggerLabel>Zone is Bypassed</TriggerLabel>
 	<ControlPageLabel>Zone Bypasses</ControlPageLabel>
       </State>
+
       <State id="zoneNumber" defaultValue="-1">
         <ValueType>Number</ValueType>
         <TriggerLabel>Zone number</TriggerLabel>
@@ -106,7 +126,7 @@
       </State>
     </States>
 	
-    <UiDisplayStateId>isNormal</UiDisplayStateId>
+    <UiDisplayStateId>zoneState</UiDisplayStateId>
 
     <ConfigUI>
       <SupportURL>http://decouto.bm</SupportURL>

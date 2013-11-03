@@ -16,4 +16,8 @@
     <Name>Create Indigo Zone Devices from Panel</Name>
     <CallbackMethod>menuCreateZoneDevices</CallbackMethod>
   </MenuItem>
+  <MenuItem id="dumpZones">
+    <Name>Dump Zone Info to Log</Name>
+    <CallbackMethod>menuDumpZonesToLog</CallbackMethod>
+  </MenuItem>
 </MenuItems>

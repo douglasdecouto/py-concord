@@ -19,3 +19,5 @@ def ascii_hex_to_byte(ascii_bytes):
 def total_secs(td):
     """ *td* is a timedelta object """
     return td.days*3600*24 + td.seconds + td.microseconds/1.0e6
+
+
