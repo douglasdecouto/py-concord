@@ -1,7 +1,9 @@
+- Handle alarm events.  This includes cancels & restorals
+- Handle arming level and map to partitions.  
 - when restarting plugin, close serial port if already open ????
 - flush input & output on opening
 - TCP proxy that speaks 'Concord' (AD2USB ser2sock?)pl
-- create new event - 'PROXY TROUBLE'  that the prxy can send to the plugin!
+- create new event - 'PROXY TROUBLE'  that the proxy can send to the plugin!
 - Keep alive
 - Fix zone text handling: spaces, backspace, sentence case
 - fixup zone states: unknown, tripped, OK, problem
