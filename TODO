@@ -1,29 +1,31 @@
-- Handle multiple partitions
+X - Handle multiple partitions
 - Create way to send synthetic events (e.g. alarms) into plugin for testing
 - Handle alarm events.  This includes cancels & restorals
 - Handle arming level and map to partitions.  
 - when restarting plugin, close serial port if already open ????
+- plugin doesn't shutdown properly, indigo has to kill the thread?
 - properly handle comm error, e.g. serial port device goes away and tx/rx fails" put panel and devices in correct error state
 - flush input & output on opening
 - fix panel info handling (get serial / rev numbers right)
 - TCP proxy that speaks 'Concord' (AD2USB ser2sock?)pl
 - create new event - 'PROXY TROUBLE'  that the proxy can send to the plugin!
 - Keep alive
-- Fix zone text handling: spaces, backspace, sentence case
+X - Fix zone text handling: spaces, backspace, sentence case
 X - fixup zone states: unknown, tripped, OK, problem
 - comm loop: be greedy about reading data before sending any; think panel doesn't want to deal with incoming messages while it is waiting for acks on outgoing
 X - Debug mode handling / log levels
 - split out the two lines for LCD display
 - Detect '*' in LCD output; expose to Indigo (but would this only tell us something we could find out from another query -- e.g. if it's * but that's only because windows are open, then who cares; how to detect other issues on top of that?)  AD2USB had bug with sending '*', perhaps we have same big although different devices?
-- Email reporting of what's open, closed; pick zones that can be open at night.
+- Email reporting of what's open, closed; pick zones that can be open at night. -- Just use indigo device groups?
 - thread safety for message handlers poking around in zone/partition data structures
+- different sets of partition states between partition info cmd and arming cmd; try to handle in a useful manner
 
 
 Handling config and config changes:
-- Not sure about how to parameterize a new zone dev when we have no panel info; seems to come up with 'zeros' as zone/part id; what about if we edit a configuration for an existing zone dev? 
-- XXX use props or state to hold zone config info?  If props, how to get zone/part visible to user.  Answer: 'address' field.  OK.  So revamp how startComm/stopComm work...
-- Can a zone/partition device change its config while active?  (i.e. after startComm but before stopComm)?
-- deviceUpdated()?
+X - Not sure about how to parameterize a new zone dev when we have no panel info; seems to come up with 'zeros' as zone/part id; what about if we edit a configuration for an existing zone dev? 
+X - XXX use props or state to hold zone config info?  If props, how to get zone/part visible to user.  Answer: 'address' field.  OK.  So revamp how startComm/stopComm work...
+X - Can a zone/partition device change its config while active?  (i.e. after startComm but before stopComm)?  Answer: no, we can rely on start/StopComm
+
 
 
 

@@ -226,13 +226,22 @@ TOKENS = {
 }
 
 def decode_text_tokens(tokens):
+    # Convert token codes to strings, adding appropriate spaces.
     s = ''
     n = len(tokens)
     for i, t in enumerate(tokens):
+        # Handle 'backspace' by discarding last character; if previous
+        # token was a word token, then we are just removing the
+        # trailing space; otherwise we are removing the last letter
+        # token.  Not sure if this is exactly the algorithm but it
+        # will work for my zone names.
+        if t == 0xFD:
+            s = s[:-1]
+            continue
         c = TOKENS.get(t, '@')
-        # print "  %r" % c
         s += c
         # For 'word' tokens, put a space afterwards, unless it's the last one
         if len(c) > 1 and i < n-1 and c[0] != '<':
             s += ' '
+        
     return s

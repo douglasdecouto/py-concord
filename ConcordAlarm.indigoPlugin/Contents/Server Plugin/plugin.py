@@ -246,6 +246,7 @@ class Plugin(indigo.PluginBase):
                 self.panel.stop_loop()
             self.panel = None
             self.panelDev = None
+            self.panelInitialQueryDone = False
             
         elif dev.deviceTypeId == "zone":
             zk = zonekey(dev)
@@ -305,7 +306,7 @@ class Plugin(indigo.PluginBase):
         else:
             self.panel.request_zones()
 
-    def menuCreateZoneDevices(self):
+    def menuCreateZoneDevices(self, valuesDict, itemId):
         """
         Create Indigo Zone devices to match the devices in the panel.
         This function creates a new device if neccessary, but doesn't
@@ -313,15 +314,26 @@ class Plugin(indigo.PluginBase):
         on the device which gives us a chance to do that.
         """
         self.logger.debug("Creating Indigo Zone devices from panel data")
+        use_title_case = valuesDict["useTitleCase"]
+        self.logger.debug("   useTitleCase: %r" % use_title_case)
         for zk, zone_data in self.zones.iteritems():
             part_num, zone_num = zk
             zone_name = zone_data.get('zone_text', '')
+            if use_title_case:
+                zone_name = zone_name.title()
             zone_type = zone_data.get('zone_type', '')
+            # Fixup zone type names to be a bit more understandablle;
+            # assume more people know what 'wireless' means rather than
+            # 'RF'.
             if zone_type == '':
                 zone_type = 'Unknown type'
+            elif zone_type == 'RF':
+                zone_type = 'Wireless Sensor'
+            elif zone_type == 'RF Touchpad':
+                zone_type = 'Wireless Keypad'
             if zone_name == '':
-                if zone_type == 'RF Touchpad':
-                    zone_name = 'RF Touchpad - %d' % zone_num
+                if zone_type == 'Wireless Keypad':
+                    zone_name = '%s - %d' % (zone_type, zone_num)
                 else:
                     zone_name = 'Unknown Zone - %d' % zone_num
             if zk not in self.zoneDevs:
@@ -333,12 +345,19 @@ class Plugin(indigo.PluginBase):
                                                 deviceTypeId="zone",
                                                 props={'partitionNumber': part_num, 
                                                        'zoneNumber': zone_num})
+                # Because these are custom device types they are not
+                # actually able to be shown in remote diplays like
+                # Indigo Touch.
+                # http://www.perceptiveautomation.com/userforum/viewtopic.php?f=22&t=7584&p=71344&hilit=custom+devices+in+remote+ui#p71344
+                # indigo.device.displayInRemoteUI(zone_dev.id, value=True)
             else:
                 zone_dev = self.zoneDevs[zk]
                 self.logger.info("Device %d already exists for Zone %d, partition %d - %s" % \
                                      (zone_dev.id, zone_num, part_num, zone_name))
+        errors = indigo.Dict()
+        return (True, valuesDict, errors)
 
-                                    
+    
     def menuDumpZonesToLog(self):
         """
         Print to log our iternal zone state information; cross-check
@@ -373,7 +392,7 @@ class Plugin(indigo.PluginBase):
     def partitionFilter(self, filter="", valuesDict=None, typeId="", targetId=0):
         """ Return list of zone numbers we have heard about. """
         return range(1, concord.CONCORD_MAX_ZONE+1)
-        
+    
     def updatePartitionDeviceState(self, part_dev, part_key):
         if part_key not in self.parts:
             self.logger.debug("Unable to update Indigo partition device %s - partition %d; no knowledge of that partition" % (part_dev.name, part_key))
@@ -461,6 +480,7 @@ class Plugin(indigo.PluginBase):
 
         elif cmd_id in ('ZONE_DATA', 'ZONE_STATUS'):
             # First update our internal state about the zone
+
             zone_num = msg['zone_number']
             part_num = msg['partition_number']
             zk = (part_num, zone_num)

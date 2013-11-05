@@ -214,9 +214,12 @@ def cmd_zone_data(msg):
           'zone_type': ZONE_TYPES.get(msg[7], 'Unknown'),
           'zone_state': zone_state_list(msg[8]),
           'zone_text': '',
+          'zone_text_tokens': [ ],
           }
     if len(msg) > 0x09 + 1:
         d['zone_text'] = decode_text_tokens(msg[9:-1])
+        d['zone_text_tokens'] = msg[9:-1]
+    
     return d;
     
 
