@@ -54,6 +54,18 @@ class Logger(object):
     def debug_verbose(self, msg): self.log(msg, level=LOG_DEBUGV)
     def log_always(self, msg): indigo.server.log(msg)
 
+def zonekey(zoneDev):
+    """ Return internal key for supplied Indigo zone device. """
+    assert zoneDev.deviceTypeId == 'zone'
+    return (int(zoneDev.pluginProps['partitionNumber']),
+            int(zoneDev.pluginProps['zoneNumber']))
+    
+def partkey(partDev):
+    """ Return internal key for supplied Indigo partition device. """
+    assert partDev.deviceTypeId == 'partition'
+    return int(partDev.address)
+
+
 class Plugin(indigo.PluginBase):
 
     def __init__(self, pluginId, pluginDisplayName, pluginVersion, pluginPrefs):
@@ -66,9 +78,16 @@ class Plugin(indigo.PluginBase):
         self.panel = None
         self.panelDev = None
         self.panelInitialQueryDone = False
-        self.zones = { } # zone number -> dict of zone info, i.e. output of cmd_zone_data
-        self.zoneDevs = { } # zone number -> dict of active zone devices
+    
+        # Zones are keyed by (partitition number, zone number)
+        self.zones = { } # zone key -> dict of zone info, i.e. output of cmd_zone_data
+        self.zoneDevs = { } # zone key -> active Indigo zone device
+        self.zoneKeysById = { } # zone device ID -> zone key
 
+        # Partitions are keyed by partition number
+        self.parts = { } # partition number -> partition info
+        self.partDevs = { } # partition number -> active Indigo partition device
+        self.partKeysById = { } # partition device ID -> partition number
 
     def __del__(self):
         indigo.PluginBase.__del__(self)
@@ -99,8 +118,9 @@ class Plugin(indigo.PluginBase):
 
     def closedPrefsConfigUi(self, valuesDict, userCancelled):
         self.logger.debug("Closed prefs config...")
-        if not userCancelled:
-            self.processPluginConfigPrefs(valuesDict)
+        if userCancelled:
+            return
+        self.processPluginConfigPrefs(valuesDict)
 
     def processPluginConfigPrefs(self, pluginPrefsDict):
         self.logger.debug("Loading plugin prefs...")
@@ -118,18 +138,50 @@ class Plugin(indigo.PluginBase):
     # Device methods
     #
     def validateDeviceConfigUi(self, valuesDict, typeId, devId):
-        self.logger.debug("Validating Device...")
+        self.logger.debug("Validating %s device config..." % typeId)
+        self.logger.debug("%s" % valuesDict) 
+        dev = indigo.devices[devId]
+        errors = indigo.Dict()
+        if typeId == 'panel':
+            if self.panelDev is not None and self.panelDev.id != devId:
+                errors['theLabel'] = "There can only be one panel device"
+            valuesDict['address'] = self.serialPortUrl
+        elif typeId == 'partition':
+            try: address = int(valuesDict['address'])
+            except ValueError: address = -1
+            if address < 1 or address > concord.CONCORD_MAX_ZONE:
+                errors['address'] = "Partition must be set to a valid value (1-%d)" % concord.CONCORD_MAX_ZONE
+            if address in self.partDevs:
+                errors['address'] = "Another partition device has the same number"
+        elif typeId == 'zone':
+            try: part = int(valuesDict['partitionNumber'])
+            except ValueError: part = -1
+            try: zone = int(valuesDict['zoneNumber'])
+            except ValueError: zone = -1
+            if part < 1 or part > concord.CONCORD_MAX_ZONE:
+                errors['partitionNumber'] = "Partition must be set to a valid value (1-%d)" % concord.CONCORD_MAX_ZONE
+            if zone < 1:
+                errors['zoneNumber'] = "Zone must be greater than 0"
+            if (part, zone) in self.zoneDevs:
+                errors['zoneNumber'] = "Another zone device in this partition has the same number"
+            valuesDict['address'] = "%d/%d" % (zone, part)
+        else:
+            raise Exception("Unknown device type %s" % typeId)
+        if len(errors) > 0:
+            return (False, valuesDict, errors)
         return (True, valuesDict)
+
 
     def deviceStartComm(self, dev):
         self.logger.debug("Device start comm: %s, %s, %s" % (dev.name, dev.id, dev.deviceTypeId))
 
-        if dev.deviceTypeId == "concordPanel":
+        if dev.deviceTypeId == "panel":
             if self.panel is not None and self.panelDev.id != dev.id:
+                dev.updateStateOnServer('panelState', 'unknown')
                 self.logger.error("Can't have more than one panel device; panel already setup at device id %r" % self.panelDev.id)
-                raise Exception("Extra panel device")
+                return
 
-            dev.updateStateOnServer(key='panelState', value='connecting')
+            dev.updateStateOnServer('panelState', 'connecting')
 
             self.panelDev = dev
             try:
@@ -137,10 +189,11 @@ class Plugin(indigo.PluginBase):
             except Exception, ex:
                 dev.updateStateOnServer("panelState", "error")
                 dev.setErrorStateOnServer("Unable to connect")
-                raise
+                self.logger.error("Unable to start alarm panel interface: %s" % str(ex))
+                return
 
             # Set the plugin object to handle all incoming commands
-            # from the panl via the messageHandler() method.
+            # from the panel via the messageHandler() method.
             self.panel_command_names = { } # code -> display-friendly name
             for code, cmd_info in concord_commands.RX_COMMANDS.iteritems():
                 cmd_id, cmd_name = cmd_info[0], cmd_info[1]
@@ -157,19 +210,32 @@ class Plugin(indigo.PluginBase):
             self.panelInitialQueryDone = False
 
         elif dev.deviceTypeId == 'zone':
-            zone_num = dev.states['zoneNumber']
-            if zone_num in self.zoneDevs:
-                self.logger.warn("Zone device %s has a duplicate zone number %d, ignoring" % \
-                               (dev.name, zone_num))
+            zk = zonekey(dev)
+            if zk in self.zoneDevs:
+                self.logger.warn("Zone device %s has a duplicate zone %d in partition %d, ignoring" % \
+                                     (dev.name, zk[1], zk[0]))
                 return
-            self.zoneDevs[zone_num] = dev
-            self.updateZoneDeviceState(dev)
+            self.zoneDevs[zk] = dev
+            self.zoneKeysById[dev.id] = zk
+            self.updateZoneDeviceState(dev, zk)
+
+        elif dev.deviceTypeId == 'partition':
+            pk = partkey(dev)
+            if pk in self.partDevs:
+                self.logger.warn("Partition device %s has a duplicate partition number %d, ignoring" % \
+                               (dev.name, pk))
+                return
+            self.partDevs[pk] = dev
+            self.updatePartitionDeviceState(dev, pk)
+
+        else:
+            raise Exception("Unknown device type: %r" % dev.deviceTypeId)
 
 
     def deviceStopComm(self, dev):
         self.logger.debug("Device stop comm: %s, %s, %s" % (dev.name, dev.id, dev.deviceTypeId))
 
-        if dev.deviceTypeId == "concordPanel":
+        if dev.deviceTypeId == "panel":
             if self.panelDev is None or self.panelDev.id != dev.id:
                 self.logger.error("Stopping a panel we don't know about at device id %r" % dev.id)
                 raise Exception("Extra panel device")
@@ -182,23 +248,23 @@ class Plugin(indigo.PluginBase):
             self.panelDev = None
             
         elif dev.deviceTypeId == "zone":
-            zone_num = dev.states['zoneNumber']
-            if zone_num not in self.zoneDevs:
-                self.logger.warn("Zone device %d - %s is not known, ignoring" % \
-                             (zone_num, dev.name))
+            zk = zonekey(dev)
+            if zk not in self.zoneDevs:
+                self.logger.warn("Zone device %s - zone %d partition %d - is not known, ignoring" % \
+                             (dev.name, zk[1], zk[0]))
                 return
-            known_dev = self.zoneDevs[zone_num]
+            known_dev = self.zoneDevs[zk]
             if dev.id != known_dev.id:
-                self.logger.warn("Zone device id %d does not match id %d we already know about for zone %d, ignoring" % (dev.id, known_dev.id, zone_num))
+                self.logger.warn("Zone device id %d does not match id %d we already know about for zone %d, partition %d, ignoring" % (dev.id, known_dev.id, zk[1], zk[0]))
                 return
-            del self.zoneDevs[zone_num]
-            
+            self.logger.debug("Deleteing zone dev %d" % dev.id)
+            del self.zoneDevs[zk]
 
-    #def getDeviceStateList(self, dev):
-    #    self.log("Get Dev State List: %s, %s, %s" % (dev.name, dev.id, dev.deviceTypeId))
-    #
-    #def getDeviceDisplayStateId(self, dev):
-    #    self.log("Get Dev Display State Id: %s, %s, %s" % (dev.name, dev.id, dev.deviceTypeId))
+        elif dev.deviceTypeId == 'partition':
+            pk = partkey(dev)
+
+        else:
+            raise Exception("Unknown device type: %r" % dev.deviceTypeId)
 
     def runConcurrentThread(self):
         try:
@@ -241,11 +307,14 @@ class Plugin(indigo.PluginBase):
 
     def menuCreateZoneDevices(self):
         """
-        Create or update Indigo Zone devices to match the devices in
-        the panel.
+        Create Indigo Zone devices to match the devices in the panel.
+        This function creates a new device if neccessary, but doesn't
+        add it to our internal state; Indigo will call deviceStartComm
+        on the device which gives us a chance to do that.
         """
         self.logger.debug("Creating Indigo Zone devices from panel data")
-        for zone_num, zone_data in self.zones.iteritems():
+        for zk, zone_data in self.zones.iteritems():
+            part_num, zone_num = zk
             zone_name = zone_data.get('zone_text', '')
             zone_type = zone_data.get('zone_type', '')
             if zone_type == '':
@@ -255,65 +324,82 @@ class Plugin(indigo.PluginBase):
                     zone_name = 'RF Touchpad - %d' % zone_num
                 else:
                     zone_name = 'Unknown Zone - %d' % zone_num
-            if zone_num not in self.zoneDevs:
-                self.logger.info("Creating Zone %d - %s" % (zone_num, zone_name))
+            if zk not in self.zoneDevs:
+                self.logger.info("Creating Zone %d, partition %d - %s" % (zone_num, part_num, zone_name))
                 zone_dev = indigo.device.create(protocol=indigo.kProtocol.Plugin, 
-                                                address="%d" % zone_num,
+                                                address="%d/%d" % (zone_num, part_num),
                                                 name=zone_name,
                                                 description=zone_type,
-                                                deviceTypeId="zone")
-                self.zoneDevs[zone_num] = zone_dev
-                zone_dev.updateStateOnServer('zoneNumber', zone_num)
+                                                deviceTypeId="zone",
+                                                props={'partitionNumber': part_num, 
+                                                       'zoneNumber': zone_num})
             else:
-                self.logger.info("Updating Zone %d - %s" % (zone_num, zone_name))
-                zone_dev = self.zoneDevs[zone_num]
-                dev.name = zone_name
-                dev.description = zone_type
-        self.updateZoneDeviceState(zone_dev)
-        
+                zone_dev = self.zoneDevs[zk]
+                self.logger.info("Device %d already exists for Zone %d, partition %d - %s" % \
+                                     (zone_dev.id, zone_num, part_num, zone_name))
+
                                     
     def menuDumpZonesToLog(self):
         """
         Print to log our iternal zone state information; cross-check
         Indigo devices against this state.
         """
-        for zone_num, zone_data in self.zones.iteritems():
+        for zk, zone_data in sorted(self.zones.iteritems()):
+            part_num, zone_num = zk
             zone_name = zone_data.get('zone_text', 'Unknown')
             zone_type = zone_data.get('zone_type', 'Unknown')
-            if zone_num in self.zoneDevs:
-                indigo_id = self.zoneDevs[zone_num].id
+            if zk in self.zoneDevs:
+                indigo_id = self.zoneDevs[zk].id
             else:
                 indigo_id = None
             self.logger.log_always("Zone %d, %s, Indigo device %r, state=%r, partition=%d, type=%s" % \
                                        (zone_num, zone_name,  indigo_id, zone_data['zone_state'],
-                                        zone_data['partition_number'], zone_type))
+                                        part_num, zone_type))
 
-        for zone_num, dev in self.zoneDevs.iteritems():
-            if zone_num in self.zones:
+        for zk, dev in self.zoneDevs.iteritems():
+            part_num, zone_num = zk
+            if zk in self.zones:
                 # We already know about this stone in our official
                 # internal state.
                 continue
-            self.logger.log_always("No zone info for Indigo device %r, id=%d, state=%s" % \
-                                       (dev.name, dev.id, dev.states['zoneState']))
+            self.logger.log_always("No zone info for Indigo device %r, id=%d, state=%s, zone %d/%d" % \
+                                       (dev.name, dev.id, dev.states['zoneState'], zone_num, part_num))
 
 
     # Plugin Actions object callbacks (pluginAction is an Indigo plugin action instance)
     def arm(self, pluginAction):
         self.logger.debug("'arm' action called:\n" + str(pluginAction))
 
-    # Device config callbacks & actions
-    def zoneFilter(self, filter="", valuesDict=None, typeId="", targetId=0):
+    def partitionFilter(self, filter="", valuesDict=None, typeId="", targetId=0):
         """ Return list of zone numbers we have heard about. """
-        return sorted(self.zones.keys())
+        return range(1, concord.CONCORD_MAX_ZONE+1)
         
-    def updateZoneDeviceState(self, zone_dev):
-        zone_num = zone_dev.states['zoneNumber']
-        if zone_num not in self.zones:
-            self.logger.debug("Unable to update Indigo zone device %s - %d; no knowledge of that zone" % \
-                                 (zone_dev.name, zone_num))
+    def updatePartitionDeviceState(self, part_dev, part_key):
+        if part_key not in self.parts:
+            self.logger.debug("Unable to update Indigo partition device %s - partition %d; no knowledge of that partition" % (part_dev.name, part_key))
+            part_dev.updateStateOnServer('partitionState', 'unknown')
+            return
+        arm_level = self.parts[part_key].get('arming_level', 'Unknown arming level')
+        state_map = { 'Off': 'ready',
+                      'Stay': 'stay',
+                      'Away': 'away',
+                      'Phone Test': 'phone_test',
+                      'Sensor Test': 'sensor_test',
+                      }
+        # TODO: How would we determine 'unready'?  Check that no zones are tripped?
+        part_state = state_map.get(arm_level, 'unknown')
+        part_dev.updateStateOnServer('partitionState', part_state)
+
+        # some confusion between partition info command and arm level
+        # command; they have different sets of valid arming states.
+        # Need to map to some common set.
+
+    def updateZoneDeviceState(self, zone_dev, zone_key):
+        if zone_key not in self.zones:
+            self.logger.debug("Unable to update Indigo zone device %s - zone %d partition %d; no knowledge of that zone" % (zone_dev.name, zone_key[1], zone_key[0]))
             zone_dev.updateStateOnServer('zoneState', 'unknown')
             return
-        data = self.zones[zone_num]
+        data = self.zones[zone_key]
         if 'zone_type' in data:
             zone_dev.updateStateOnServer('zoneType', data['zone_type'])
         if 'zone_text' in data:
@@ -376,27 +462,46 @@ class Plugin(indigo.PluginBase):
         elif cmd_id in ('ZONE_DATA', 'ZONE_STATUS'):
             # First update our internal state about the zone
             zone_num = msg['zone_number']
+            part_num = msg['partition_number']
+            zk = (part_num, zone_num)
             if 'zone_text' in msg and msg['zone_text'] != '':
                 zone_name = '%s - %r' % (zone_num, msg['zone_text'])
             else:
                 zone_name = '%d' % zone_num
-            if zone_num in self.zones:
+            if zk in self.zones:
                 self.logger.info("Updating zone %s with %s message" % (zone_name, cmd_id))
-                zone_info = self.zones[zone_num]
+                zone_info = self.zones[zk]
                 zone_info.update(msg)
                 del zone_info['command_id']
             else:
                 self.logger.info("Learning new zone %s from %s message" % (zone_name, cmd_id))
                 zone_info = msg.copy()
                 del zone_info['command_id']
-                self.zones[zone_num] = zone_info
+                self.zones[zk] = zone_info
 
             # Next sync up any Indigo devices that might be for this
             # zone.
-            if zone_num in self.zoneDevs:
-                self.updateZoneDeviceState(self.zoneDevs[zone_num])
+            if zk in self.zoneDevs:
+                self.updateZoneDeviceState(self.zoneDevs[zk], zk)
             else:
                 self.logger.warn("No Indigo zone device for zone %s" % zone_name)
+
+        elif cmd_id == 'PART_DATA':
+            part_num = msg['partition_number']
+            if part_num in self.parts:
+                self.logger.info("Updating partition %d with %s message" % (part_num, cmd_id))
+                part_info = self.parts[part_num]
+                part_info.update(msg)
+                del part_info['command_id']
+            else:
+                self.logger.info("Learning new partition %d from %s message" % (part_num, cmd_id))
+                part_info = msg.copy()
+                del part_info['command_id']
+                self.parts[part_num] = part_info
+            if part_num in self.partDevs:
+                self.updatePartitionDeviceState(self.partDevs[part_num], part_num)
+            else:
+                self.logger.warn("No Indigo partition device for partition %d" % part_num)
 
         elif cmd_id == 'EQPT_LIST_DONE':
             if not self.panelInitialQueryDone:

@@ -10,6 +10,8 @@ from concord_commands import RX_COMMANDS, \
 
 from concord_helpers import ascii_hex_to_byte, total_secs
 
+CONCORD_MAX_ZONE = 6
+
 CONCORD_BAUD     = 9600
 CONCORD_BYTESIZE = serial.EIGHTBITS
 CONCORD_STOPBITS = serial.STOPBITS_ONE

@@ -332,7 +332,7 @@ ARM_LEVEL = {
     2: 'Stay',
     3: 'Away',
     8: 'Phone Test',
-    9: 'Sesnsor Test',
+    9: 'Sensor Test',
 }
 
 def cmd_partition_data(msg):

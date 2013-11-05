@@ -1,15 +1,19 @@
 <?xml version="1.0"?>
 <Devices>
 
-  <Device type="custom" id="concordPanel">
+  <Device type="custom" id="panel">
     <Name>Concord Alarm Panel</Name>
 
     <ConfigUI>
       <SupportURL>http://decouto.bm</SupportURL>
-      <!-- <Field type="serialport" id="panelSerialPort" /> -->
-      <Field type="label" id="theLabel">
-        <Label>Dummy label</Label>
+       <Field type="label" id="theLabel">
+         <Label>Concord alarm panel.</Label>
+       </Field> 
+       <Field type="label" id="theLabel2">
+         <Label>Configure communication setting via the Plugin configuration.</Label>
       </Field>
+      <!-- Will be populated with serial port name by validateDeviceConfigUi -->
+      <Field id="address" type="textField" defaultValue="unknown" hidden="true" />
     </ConfigUI>
 
     <States>
@@ -38,28 +42,84 @@
         <TriggerLabel>Panel software revision</TriggerLabel>
         <ControlPageLabel>Panel software revision</ControlPageLabel>
       </State>
-      <State id="panelState" defaultValue="preparing" readonly="YES">
+      <State id="panelState" defaultValue="unknown" readonly="YES">
 	<ValueType>
 	  <List>
+            <Option value="unknown">Unknown</Option>
 	    <Option value="connecting">Connecting</Option>
 	    <Option value="exploring">Exploring</Option>
 	    <Option value="ready">Ready</Option>
 	    <Option value="error">Error</Option>
-            <Option value="alarm">Alarm</Option>
 	  </List>
 	</ValueType>
-	<TriggerLabel>System State</TriggerLabel>
-	<ControlPageLabel>State</ControlPageLabel>
+	<TriggerLabel>Panel State is</TriggerLabel>
+	<ControlPageLabel>Panel State</ControlPageLabel>
       </State>
     </States>
 
     <UiDisplayStateId>panelState</UiDisplayStateId>
-
   </Device>
+
+  <Device type="custom" id="partition">
+    <Name>Partition</Name>
+
+    <ConfigUI>
+      <SupportURL>http://decouto.bm</SupportURL>
+      <!-- Use standard 'address' field to hold partition number so
+           it shows up in the UI with no extra work by us -->
+      <Field type="menu" id="address" defaultValue="1">
+	<List class="self" filter="N/A" method="partitionFilter"/>
+	<Label>Partition:</Label>
+      </Field>
+    </ConfigUI>
+
+
+    <States>
+      <State id="partitionState" defaultValue="unknown">
+	<ValueType>
+	  <List>
+            <Option value="unknown">Unknown</Option>
+	    <Option value="ready">Ready</Option> <!-- aka 'off' -->
+	    <Option value="unready">Not Ready</Option> <!-- Not actually a Concord state -->
+	    <Option value="phone_test">Phone Test</Option>
+            <Option value="sensor_test">Sensor Test</Option>
+	    <Option value="stay">Armed Stay</Option>
+	    <Option value="away">Armed Away</Option>
+	  </List>
+	</ValueType>
+	<TriggerLabel>Partition State is</TriggerLabel>
+	<ControlPageLabel>Partition State</ControlPageLabel>
+      </State>
+    </States>
+
+    <UiDisplayStateId>partitionState</UiDisplayStateId>
+  </Device>
+
+
+
   <Device type="custom" id="zone">
     <Name>Zone</Name>
+    <ConfigUI>
+      <SupportURL>http://decouto.bm</SupportURL>
+      <!-- The code will combine the partition number and the zone number 
+           and put them in the 'address' field so they show up in the UI.
+           See the validateDeviceConfigUi function. -->
+      <Field id="address" type="textField" defaultValue="unknown" hidden="true" />
+      <!-- We only allow user to select valid partition numbers, driven by this callback. -->          
+      <Field id="partitionNumber" type="menu" defaultValue="1">
+	<List class="self" filter="N/A" method="partitionFilter"/>
+	<Label>Partition:</Label>
+      </Field>
+      <!-- But, let user enter any zone number (> 0), even if that zone ends
+           up never existing.  This way user can setup zones even if they can't 
+           connect to the alarm panel and download the zone list into this plugin. -->
+      <Field id="zoneNumber" type="textField" defaultValue="">
+	<Label>Zone:</Label>
+      </Field>
+    </ConfigUI>
+
     <States>
-      <!-- Summary state suitable for showing in Indogo device summary. -->
+      <!-- Summary state suitable for showing in Indigo device summary. -->
       <State id="zoneState" defaultValue="Unknown">
 	<ValueType>
           <List>
@@ -109,11 +169,7 @@
 	<ControlPageLabel>Zone Bypasses</ControlPageLabel>
       </State>
 
-      <State id="zoneNumber" defaultValue="-1">
-        <ValueType>Number</ValueType>
-        <TriggerLabel>Zone number</TriggerLabel>
-        <ControlPageLabel>Zone number is</ControlPageLabel>
-      </State>
+      <!-- Keep these here, or move into properties? -->
       <State id="zoneText" defaultValue="">
         <ValueType>String</ValueType>
         <TriggerLabel>Name</TriggerLabel>
@@ -128,14 +184,6 @@
 	
     <UiDisplayStateId>zoneState</UiDisplayStateId>
 
-    <ConfigUI>
-      <SupportURL>http://decouto.bm</SupportURL>
-
-      <Field id="zoneAddress" type="menu">
-	<List class="self" filter="N/A" method="zoneFilter"/>
-	<Label>Zone:</Label>
-      </Field>
-    </ConfigUI>
   </Device>
 
 </Devices>
