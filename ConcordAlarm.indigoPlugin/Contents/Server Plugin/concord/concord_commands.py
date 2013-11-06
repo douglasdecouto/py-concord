@@ -180,12 +180,12 @@ ZONE_STATES = {
     0x10: 'Bypassed',
 }
 
-def zone_state_list(zone_state_code):
-    zs = [ ]
-    for bitval, state_name in sorted(ZONE_STATES.iteritems()):
-        if bitval & zone_state_code:
-            zs.append(state_name)
-    return zs
+def build_state_list(state_code, state_dict):
+    states = [ ]
+    for bitval, state_name in sorted(state_dict.iteritems()):
+        if bitval & state_code:
+            states.append(state_name)
+    return states
 
 # Concord zone types only
 ZONE_TYPES = {
@@ -200,7 +200,7 @@ def cmd_zone_status(msg):
     d = { 'partition_number': msg[2],
           'area_number': msg[3],
           'zone_number': (msg[4] << 8) + msg[5],
-          'zone_state': zone_state_list(msg[6])
+          'zone_state': build_state_list(msg[6], ZONE_STATES)
           }
     return d;
 
@@ -276,8 +276,36 @@ def decode_alarm_type(gen_code, spec_code):
     gen_type, spec_type_dict = ALARM_CODES[gen_code]
     return gen_type, spec_type_dict.get(spec_code, 'Unknown')
 
+
 def cmd_entry_exit_delay(msg):
-    return { }
+    assert (msg[1], msg[2]) == (0x22, 0x03), "Unexpected command type"
+    ck_msg_len(msg, (0x22, 0x03), 0x08)
+    d = { 'partition_number': msg[3],
+          'area_number': msg[4],
+          'delay_seconds': bytes_to_num([0, 0, msg[6], msg[7]]),
+          }
+    flags = msg[5]
+    bits54 = (flags >> 4) & 0x3 
+    bit6 = (flags >> 5) & 1
+    bit7 = (flags >> 6) & 1
+    v = [ ]
+    if bits54 == 0:
+        v.append('standard')
+    elif bits54 == 1:
+        v.append('extended')
+    elif bits54 == 2:
+        v.append('twice extended')
+    if bit6 == 1:
+        v.append('exit delay')
+    else:
+        v.append('entry delay')
+    if bit7 == 1:
+        v.append('end delay')
+    else:
+        v.append('start delay')
+
+    d['delay_flags'] = v
+    return d;
 
 
 # Concord sources
@@ -386,8 +414,24 @@ def cmd_siren_go(msg):
 def cmd_siren_stop(msg):
     return { }
 
+FEAT_STATES = {
+    0x01: 'Chime',
+    0x02: 'Energy saver',
+    0x04: 'No delay',
+    0x08: 'Latchkey',
+    0x10: 'Silent arming',
+    0x20: 'Quick arm',
+}
+
 def cmd_feat_state(msg):
-    return { }
+    assert (msg[1], msg[2]) == (0x22, 0x0c), "Unexpected command type"
+    ck_msg_len(msg, (0x22, 0x0c), 0x06)
+    d = { 'partition_number': msg[3],
+          'area_number': msg[4],
+          'feature_state': build_state_list(msg[5], FEAT_STATES),
+          }
+    return d;
+
 
 def cmd_temp(msg):
     return { }

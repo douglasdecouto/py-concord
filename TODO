@@ -1,13 +1,13 @@
 X - Handle multiple partitions
 - Create way to send synthetic events (e.g. alarms) into plugin for testing
-- Handle alarm events.  This includes cancels & restorals
-- Handle arming level and map to partitions.  
+- **Handle alarm events.  This includes cancels & restorals**
+X - Handle arming level and map to partitions.  
 - when restarting plugin, close serial port if already open ????
 - plugin doesn't shutdown properly, indigo has to kill the thread?
 - properly handle comm error, e.g. serial port device goes away and tx/rx fails" put panel and devices in correct error state
 - flush input & output on opening
 - fix panel info handling (get serial / rev numbers right)
-- TCP proxy that speaks 'Concord' (AD2USB ser2sock?)pl
+- TCP proxy that speaks 'Concord' (AD2USB ser2sock?)
 - create new event - 'PROXY TROUBLE'  that the proxy can send to the plugin!
 - Keep alive
 X - Fix zone text handling: spaces, backspace, sentence case
@@ -38,3 +38,24 @@ Models:
 - Caddx
 - AD2USB -- also for Honeywell, like Cynical
 - DSC
+
+
+This happened when I armed the alarm silently (push 5, Stay at keypad)
+  GE Concord Alarm Panel          [DEBUG] Handling panel message FEAT_STATE, Feature State
+  GE Concord Alarm Panel          [DEBUG] Handling panel message ARM_LEVEL, Arming Level
+  GE Concord Alarm Panel          [INFO] Updating partition 1 with ARM_LEVEL message
+  GE Concord Alarm Panel          [DEBUG] Handling panel message ALARM, Alarm/Trouble
+  Error                           cannot update device state for key panelState to value alarm (invalid enumeration value)
+  GE Concord Alarm Panel          [DEBUG] Handling panel message ALARM, Alarm/Trouble
+  Error                           cannot update device state for key panelState to value alarm (invalid enumeration value)
+  GE Concord Alarm Panel          [DEBUG] Handling panel message DELAY, Entry/Exit Delay
+  GE Concord Alarm Panel          [DEBUG] Handling panel message LIGHTS_STATE, Lights State Command
+  GE Concord Alarm Panel          [DEBUG] Handling panel message LIGHTS_STATE, Lights State Command
+  GE Concord Alarm Panel          [DEBUG] Handling panel message LIGHTS_STATE, Lights State Command
+  GE Concord Alarm Panel          [DEBUG] Handling panel message LIGHTS_STATE, Lights State Command
+  GE Concord Alarm Panel          [DEBUG] Handling panel message LIGHTS_STATE, Lights State Command
+
+5 Nov 2013 20:26:29
+  GE Concord Alarm Panel          [DEBUG] Handling panel message DELAY, Entry/Exit Delay
+  GE Concord Alarm Panel          [DEBUG] Handling panel message FEAT_STATE, Feature State
+  GE Concord Alarm Panel          [DEBUG] Handling panel message DELAY, Entry/Exit Delay
