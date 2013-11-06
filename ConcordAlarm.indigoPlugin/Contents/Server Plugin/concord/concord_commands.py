@@ -266,6 +266,7 @@ def cmd_arming_level(msg):
         
     d['user_info'] = user_num
     d['arming_level'] = ARMING_LEVELS.get(msg[7], 'Unknown Arming Level')
+    d['arming_level_code'] = msg[7]
 
     return d
 
@@ -344,6 +345,7 @@ def cmd_partition_data(msg):
     d = { 'partition_number': msg[2],
           'area_number': msg[3],
           'arming_level': ARM_LEVEL.get(msg[4], 'Unknown Arming Level'),
+          'arming_level_code': msg[4],
           'partition_text': '',
     }
     if len(msg) > 0x05:

@@ -65,6 +65,23 @@ def partkey(partDev):
     assert partDev.deviceTypeId == 'partition'
     return int(partDev.address)
 
+# Different messages (i.e. PART_DATA and ARM_LEVEL) may
+# provide different sets of partitiion arming states; this dict
+# unifies them and translates them to the states our Partitiion device
+# supports.
+PART_ARM_STATE_MAP = {
+    # Original arming code -> Partition device state
+    -1: 'unknown', # Internal to plugin
+    0: 'zone_test', # 'Zone Test', ARM_LEVEL only
+    1: 'ready', # 'Off',
+    2: 'stay', # 'Home/Perimeter',
+    3: 'away', # 'Away/Full',
+    4: 'night', # 'Night', ARM_LEVEL only
+    5: 'silent', # 'Silent', ARM_LEVEL only
+    8: 'phone_test', # 'Phone Test', PART_DATA only
+    9: 'sensor_test', # 'Sensor Test', PART_DATA only
+}
+
 
 class Plugin(indigo.PluginBase):
 
@@ -263,7 +280,15 @@ class Plugin(indigo.PluginBase):
 
         elif dev.deviceTypeId == 'partition':
             pk = partkey(dev)
-
+            if pk not in self.partDevs:
+                self.logger.warn("Partition device %s - partition %d - is not known, ignoring" % (dev.name, pk))
+                return
+            known_dev = self.partDevs[pk]
+            if dev.id != known_dev.id:
+                self.logger.warn("Partition device id %d does not match id %d we already know about for partition %d, ignoring" % (dev.id, known_dev.id, pk))
+                return
+            self.logger.debug("Deleteing partition dev %d" % dev.id)
+            del self.partDevs[pk]
         else:
             raise Exception("Unknown device type: %r" % dev.deviceTypeId)
 
@@ -389,29 +414,25 @@ class Plugin(indigo.PluginBase):
     def arm(self, pluginAction):
         self.logger.debug("'arm' action called:\n" + str(pluginAction))
 
+
     def partitionFilter(self, filter="", valuesDict=None, typeId="", targetId=0):
         """ Return list of zone numbers we have heard about. """
         return range(1, concord.CONCORD_MAX_ZONE+1)
+
     
     def updatePartitionDeviceState(self, part_dev, part_key):
         if part_key not in self.parts:
             self.logger.debug("Unable to update Indigo partition device %s - partition %d; no knowledge of that partition" % (part_dev.name, part_key))
             part_dev.updateStateOnServer('partitionState', 'unknown')
+            part_dev.updateStateOnServer('armingUser', '')
             return
-        arm_level = self.parts[part_key].get('arming_level', 'Unknown arming level')
-        state_map = { 'Off': 'ready',
-                      'Stay': 'stay',
-                      'Away': 'away',
-                      'Phone Test': 'phone_test',
-                      'Sensor Test': 'sensor_test',
-                      }
+        arm_level = self.parts[part_key].get('arming_level_code', -1)
+        arm_user = self.parts[part_key].get('user_info', 'Unknown User')
         # TODO: How would we determine 'unready'?  Check that no zones are tripped?
-        part_state = state_map.get(arm_level, 'unknown')
+        part_state = PART_ARM_STATE_MAP.get(arm_level, 'unknown')
         part_dev.updateStateOnServer('partitionState', part_state)
+        part_dev.updateStateOnServer('armingUser', arm_user)
 
-        # some confusion between partition info command and arm level
-        # command; they have different sets of valid arming states.
-        # Need to map to some common set.
 
     def updateZoneDeviceState(self, zone_dev, zone_key):
         if zone_key not in self.zones:
@@ -506,7 +527,7 @@ class Plugin(indigo.PluginBase):
             else:
                 self.logger.warn("No Indigo zone device for zone %s" % zone_name)
 
-        elif cmd_id == 'PART_DATA':
+        elif cmd_id in ('PART_DATA', 'ARM_LEVEL'):
             part_num = msg['partition_number']
             if part_num in self.parts:
                 self.logger.info("Updating partition %d with %s message" % (part_num, cmd_id))

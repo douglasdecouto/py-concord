@@ -81,14 +81,23 @@
             <Option value="unknown">Unknown</Option>
 	    <Option value="ready">Ready</Option> <!-- aka 'off' -->
 	    <Option value="unready">Not Ready</Option> <!-- Not actually a Concord state -->
-	    <Option value="phone_test">Phone Test</Option>
+	    <Option value="zone_test">Phone Test</Option>
+            <Option value="phone_test">Phone Test</Option>
             <Option value="sensor_test">Sensor Test</Option>
 	    <Option value="stay">Armed Stay</Option>
 	    <Option value="away">Armed Away</Option>
+	    <Option value="night">Armed Night</Option>
+	    <Option value="silent">Armed Silen</Option>
 	  </List>
 	</ValueType>
 	<TriggerLabel>Partition State is</TriggerLabel>
 	<ControlPageLabel>Partition State</ControlPageLabel>
+      </State>
+
+      <State id="armingUser" defaultValue="Unknown">
+        <ValueType>String</ValueType>
+	<TriggerLabel>Arming User is</TriggerLabel>
+	<ControlPageLabel>Arming User</ControlPageLabel>
       </State>
     </States>
 
