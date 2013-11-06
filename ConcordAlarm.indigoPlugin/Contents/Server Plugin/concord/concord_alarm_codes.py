@@ -1,4 +1,6 @@
-
+"""
+Concord panel general and specific alarm type codes.
+"""
 
 ALARM_SPECIFIC_TYPES = {
 0: 'Unspecified',

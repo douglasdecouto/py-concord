@@ -68,8 +68,8 @@
       <!-- Use standard 'address' field to hold partition number so
            it shows up in the UI with no extra work by us -->
       <Field type="menu" id="address" defaultValue="1">
-	<List class="self" filter="N/A" method="partitionFilter"/>
 	<Label>Partition:</Label>
+	<List class="self" filter="N/A" method="partitionFilter"/>
       </Field>
     </ConfigUI>
 
@@ -77,17 +77,22 @@
     <States>
       <State id="partitionState" defaultValue="unknown">
 	<ValueType>
-	  <List>
+          <!-- Unfortunately don't deem to be able to use the dynamic
+               filter to populate the list of valid partition
+               states. 
+          -->
+          <!-- <List class="self" filter="N/A" method="partitionStateFilter"/> -->
+          <List>
             <Option value="unknown">Unknown</Option>
-	    <Option value="ready">Ready</Option> <!-- aka 'off' -->
-	    <Option value="unready">Not Ready</Option> <!-- Not actually a Concord state -->
+	    <Option value="ready">Ready</Option> 
+	    <Option value="unready">Not Ready</Option> 
 	    <Option value="zone_test">Phone Test</Option>
             <Option value="phone_test">Phone Test</Option>
             <Option value="sensor_test">Sensor Test</Option>
 	    <Option value="stay">Armed Stay</Option>
 	    <Option value="away">Armed Away</Option>
 	    <Option value="night">Armed Night</Option>
-	    <Option value="silent">Armed Silen</Option>
+	    <Option value="silent">Armed Silent</Option>
 	  </List>
 	</ValueType>
 	<TriggerLabel>Partition State is</TriggerLabel>
@@ -99,7 +104,48 @@
 	<TriggerLabel>Arming User is</TriggerLabel>
 	<ControlPageLabel>Arming User</ControlPageLabel>
       </State>
-    </States>
+
+      <State id="features" defaultValue="Unknown">
+        <ValueType>String</ValueType>
+	<TriggerLabel>Features are</TriggerLabel>
+	<ControlPageLabel>Features</ControlPageLabel>
+      </State>
+
+    <!-- Following states are to track alarm status of partition -->
+    <!-- Alarm source, e.g. "Zone 4", "System" -->
+    <State id="alarmSource" defaultValue="None">
+      <ValueType>String</ValueType>
+      <TriggerLabel>Alarm source is</TriggerLabel>
+      <ControlPageLabel>Alarm source</ControlPageLabel>
+    </State>
+    <!-- Two-part numeric alarm code, e.g. "1.4" would be Polic Panic (see protocol docs) -->
+    <State id="alarmCode" defaultValue="None">
+      <ValueType>String</ValueType>
+      <TriggerLabel>Alarm code</TriggerLabel>
+      <ControlPageLabel>Alarm code is</ControlPageLabel>
+    </State>
+    <!-- Text description of alarm -->
+    <State id="alarmDescription" defaultValue="None">
+      <ValueType>String</ValueType>
+      <TriggerLabel>Alarm description is</TriggerLabel>
+      <ControlPageLabel>Alarm Description</ControlPageLabel>
+    </State>
+    <!-- Alarm event data; generally unused and if used is typically a
+         user number, but stick it here anyway. -->
+    <State id="alarmEventData" defaultValue="None">
+      <ValueType>String</ValueType>
+      <TriggerLabel>Alarm event data is</TriggerLabel>
+      <ControlPageLabel>Alarm event data</ControlPageLabel>
+    </State>
+
+    <!-- Entry/exit delay information -->
+    <State id="delay" defaultValue="None">
+      <ValueType>String</ValueType>
+      <TriggerLabel>Delay is</TriggerLabel>
+      <ControlPageLabel>Delay</ControlPageLabel>
+    </State>
+
+  </States>
 
     <UiDisplayStateId>partitionState</UiDisplayStateId>
   </Device>

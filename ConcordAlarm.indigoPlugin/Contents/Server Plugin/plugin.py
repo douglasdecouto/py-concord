@@ -7,12 +7,15 @@ import os
 import sys
 import time
 
-from concord import concord, concord_commands
+from concord import concord, concord_commands, concord_alarm_codes
 
 # Note the "indigo" module is automatically imported and made available inside
 # our global name space by the host process.
 
+
+#
 # Logging.  Roll our own because we want two levels of DEBUG.
+#
 LOG_ERR    = 0
 LOG_WARN   = 1
 LOG_INFO   = 2
@@ -65,6 +68,31 @@ def partkey(partDev):
     assert partDev.deviceTypeId == 'partition'
     return int(partDev.address)
 
+def any_if_blank(s):
+    if s == '': return 'any'
+    else: return s
+
+
+#
+# XML configuration filters
+# 
+PART_FILTER = [(str(p), str(p)) for p in range(1, concord.CONCORD_MAX_ZONE+1)]
+PART_FILTER_TRIGGER = [('any', 'Any')] + PART_FILTER
+
+PART_STATE_FILTER = [ 
+    ('unknown', 'Unknown'),
+    ('ready', 'Ready'), # aka 'off'
+    ('unready', 'Not Ready'), # Not actually a Concord state 
+    ('zone_test', 'Phone Test'),
+    ('phone_test', 'Phone Test'),
+    ('sensor_test', 'Sensor Test'),
+    ('stay', 'Armed Stay'),
+    ('away', 'Armed Away'),
+    ('night', 'Armed Night'),
+    ('silent', 'Armed Silent'),
+    ]
+PART_STATE_FILTER_TRIGGER = [('any', 'Any')] + PART_STATE_FILTER
+
 # Different messages (i.e. PART_DATA and ARM_LEVEL) may
 # provide different sets of partitiion arming states; this dict
 # unifies them and translates them to the states our Partitiion device
@@ -106,6 +134,10 @@ class Plugin(indigo.PluginBase):
         self.partDevs = { } # partition number -> active Indigo partition device
         self.partKeysById = { } # partition device ID -> partition number
 
+        # Triggers are keyed by Indigo trigger ID; these are used to
+        # fire off the events described in our Events.xml.
+        self.triggers = { }
+
     def __del__(self):
         indigo.PluginBase.__del__(self)
 
@@ -115,6 +147,31 @@ class Plugin(indigo.PluginBase):
     def shutdown(self):
         self.logger.debug("shutdown called")
                 
+    #
+    # Triggers
+    #
+    def triggerStartProcessing(self, trigger):
+        self.logger.debug("Adding Trigger %d - %s" % (trigger.id, trigger.name))
+        assert trigger.id not in self.triggers
+        self.triggers[trigger.id] = trigger
+ 
+    def triggerStopProcessing(self, trigger):
+        self.logger.debug("Removing Trigger %d - %s" % (trigger.id, trigger.name))
+        assert trigger.id in self.triggers
+        del self.triggers[trigger.id] 
+
+    def getTriggersForType(self, triggerTypeIds):
+        """ 
+        *triggerTypeIds* is a set or list of trigger type IDs we want
+        to check.  We will give back the list of those types of
+        triggers we know about in a deterministic order.
+        """
+        t = [ ]
+        for tid, trigger in sorted(self.triggers.iteritems()):
+            if trigger.pluginTypeId in triggerTypeIds:
+                t.append(trigger)
+        return t
+
     #
     # Plugin prefs methods
     #
@@ -156,7 +213,6 @@ class Plugin(indigo.PluginBase):
     #
     def validateDeviceConfigUi(self, valuesDict, typeId, devId):
         self.logger.debug("Validating %s device config..." % typeId)
-        self.logger.debug("%s" % valuesDict) 
         dev = indigo.devices[devId]
         errors = indigo.Dict()
         if typeId == 'panel':
@@ -275,7 +331,7 @@ class Plugin(indigo.PluginBase):
             if dev.id != known_dev.id:
                 self.logger.warn("Zone device id %d does not match id %d we already know about for zone %d, partition %d, ignoring" % (dev.id, known_dev.id, zk[1], zk[0]))
                 return
-            self.logger.debug("Deleteing zone dev %d" % dev.id)
+            self.logger.debug("Deleting zone dev %d" % dev.id)
             del self.zoneDevs[zk]
 
         elif dev.deviceTypeId == 'partition':
@@ -287,7 +343,7 @@ class Plugin(indigo.PluginBase):
             if dev.id != known_dev.id:
                 self.logger.warn("Partition device id %d does not match id %d we already know about for partition %d, ignoring" % (dev.id, known_dev.id, pk))
                 return
-            self.logger.debug("Deleteing partition dev %d" % dev.id)
+            self.logger.debug("Deleting partition dev %d" % dev.id)
             del self.partDevs[pk]
         else:
             raise Exception("Unknown device type: %r" % dev.deviceTypeId)
@@ -416,22 +472,50 @@ class Plugin(indigo.PluginBase):
 
 
     def partitionFilter(self, filter="", valuesDict=None, typeId="", targetId=0):
-        """ Return list of zone numbers we have heard about. """
-        return range(1, concord.CONCORD_MAX_ZONE+1)
+        return PART_FILTER
+    def partitionFilterForTriggers(self, filter="", valuesDict=None, typeId="", targetId=0):
+        self.logger.debug("Enter PFT")
+        return PART_FILTER_TRIGGER
 
+    def partitionStateFilter(self, filter="", valuesDict=None, typeId="", targetId=0):
+        return PART_STATE_FILTER
+    def partitionStateFilterForTriggers(self, filter="", valuesDict=None, typeId="", targetId=0):
+        return PART_STATE_FILTER_TRIGGER
+
+    def alarmGeneralTypeFilter(self, filter="", valuesDict=None, typeId="", targetId=0):
+        gen_codes = [ (str(gen_code), gen_name)
+                      for gen_code, (gen_name, specific_map)
+                      in sorted(concord_alarm_codes.ALARM_CODES.iteritems())]
+        return [('any', 'Any')] + gen_codes
     
     def updatePartitionDeviceState(self, part_dev, part_key):
         if part_key not in self.parts:
             self.logger.debug("Unable to update Indigo partition device %s - partition %d; no knowledge of that partition" % (part_dev.name, part_key))
             part_dev.updateStateOnServer('partitionState', 'unknown')
             part_dev.updateStateOnServer('armingUser', '')
+            part_dev.updateStateOnServer('features', 'Unknown')
+            part_dev.updateStateOnServer('delay', 'Unknown')
             return
-        arm_level = self.parts[part_key].get('arming_level_code', -1)
-        arm_user = self.parts[part_key].get('user_info', 'Unknown User')
-        # TODO: How would we determine 'unready'?  Check that no zones are tripped?
+
+        part_data = self.parts[part_key]
+
+        arm_level = part_data.get('arming_level_code', -1)
         part_state = PART_ARM_STATE_MAP.get(arm_level, 'unknown')
+
+        arm_user  = part_data.get('user_info', 'Unknown User')
+        features  = part_data.get('feature_state', ['Unknown'])
+
+        delay_flags = part_data.get('delay_flags')
+        if not delay_flags:
+            delay_str = "No delay info"
+        else:
+            delay_str = "%s, %d seconds" % (', '.join(delay_flags), part_data.get('delay_seconds', -1))
+
+        # TODO: How would we determine 'unready'?  Check that no zones are tripped?
         part_dev.updateStateOnServer('partitionState', part_state)
         part_dev.updateStateOnServer('armingUser', arm_user)
+        part_dev.updateStateOnServer('features', ', '.join(features))
+        part_dev.updateStateOnServer('delay', delay_str)
 
 
     def updateZoneDeviceState(self, zone_dev, zone_key):
@@ -492,6 +576,9 @@ class Plugin(indigo.PluginBase):
         log_fn("Handling panel message %s, %s" % \
                    (cmd_id, self.panel_command_names.get(cmd_id, 'Unknown')))
 
+        #
+        # First set of cases by message to update plugin and device state.
+        #
         if cmd_id == 'PANEL_TYPE':
             self.panelDev.updateStateOnServer('panelType', msg['panel_type'])
             self.panelDev.updateStateOnServer('panelIsConcord', msg['is_concord'])
@@ -527,7 +614,7 @@ class Plugin(indigo.PluginBase):
             else:
                 self.logger.warn("No Indigo zone device for zone %s" % zone_name)
 
-        elif cmd_id in ('PART_DATA', 'ARM_LEVEL'):
+        elif cmd_id in ('PART_DATA', 'ARM_LEVEL', 'FEAT_STATE', 'DELAY'):
             part_num = msg['partition_number']
             if part_num in self.parts:
                 self.logger.info("Updating partition %d with %s message" % (part_num, cmd_id))
@@ -550,13 +637,45 @@ class Plugin(indigo.PluginBase):
                 self.panelInitialQueryDone = True
 
         elif cmd_id == 'ALARM':
-            # XXX how to reset from this state?
-            # What other actions?  Triggers I think...
-            self.panelDev.updateStateOnServer('panelState', 'alarm')
+            # Update partition alarm states.
+            #
+            # XXX Set partitionState to 'alarm'?  Then need to track
+            # state as it changes...  How to determine partition alarm
+            # state when we first start up?  I know this will be a
+            # rare case, but... Probably can say partition is in alarm
+            # if any of its zones are in alarm.
+            part_num = msg['partition_number']
+            source_type = msg['source_type']
+            source_num = msg['source_number']
+            alarm_code_str ="%d.%d" % (msg['alarm_general_type_code'], msg['alarm_specific_type_code'])
+            alarm_desc = "%s / %s" % (msg['alarm_general_type'], msg['alarm_specific_type'])
+            event_data = msg['event_specific_data']
 
-        elif cmd_id == 'ARM_LEVEL':
-            # 
-            pass
+            self.logger.error("ALARM or TROUBLE on partition %d: Source is %s/%d; Alarm/Trouble is %s: %s; event data = %s" % (part_num, source_type, source_num, alarm_code_str, alarm_desc, event_data))
+
+            # Try to get a better name for the alarm source if it is a zone.
+            zk = (part_num, source_num)
+            if source_type == 'Zone' and zk in self.zones:
+                zone_name = self.zones[zk].get('zone_text', 'Unknown')
+                if zk in self.zoneDevs:
+                    source_desc = "Zone %d - Indigo zone %s, alarm zone %s" % \
+                        (source_num, self.zoneDevs[zk].name, zone_name)
+                else:
+                    source_desc = "Zone %d - alarm zone %s" % (source_num, zone_name)
+            else:
+                source_desc = "%s, number %d" % (source_type, source_num)
+            self.logger.error("ALARM or TROUBLE on partition %d: Source details: %s" % (part_num, source_desc))
+
+            if part_num in self.partDevs:
+                partDev = self.partDevs[part_num]
+                self.logger.debug("Updating Indigo partition device %d" % partDev.id)
+                partDev.updateStateOnServer('alarmSource', source_desc)
+                partDev.updateStateOnServer('alarmCode', alarm_code_str)
+                partDev.updateStateOnServer('alarmDescription', alarm_desc)
+                partDev.updateStateOnServer('alarmEventData', event_data)
+                self.logger.debug(" .... Done")
+            else:
+                self.logger.warn("No Indigo partition device for partition %d" % part_num)
 
         elif cmd_id == 'CLEAR_IMAGE':
             # Logic goes here to empty all of our state and reload it.
@@ -565,4 +684,35 @@ class Plugin(indigo.PluginBase):
         else:
             self.logger.debug_verbose("Plugin: unhandled panel message %s" % cmd_id)
 
-    
+        #
+        # Second set of cases for trigger handling
+        #
+        if cmd_id == 'ARM_LEVEL':
+            # Execute all arming level triggers that match this
+            # message's partition and arming level.
+            for trigger in self.getTriggersForType(['armingLevel']):
+                part_num = msg['partition_number']
+                arm_level = PART_ARM_STATE_MAP.get(msg['arming_level_code'], 'unknown')
+
+                trig_part = any_if_blank(trigger.pluginProps['address'])
+                trig_level = any_if_blank(trigger.pluginProps['partitionState'])
+
+                part_match = (trig_part == 'any') or (int(trig_part) == part_num)
+                level_match = (trig_level == 'any') or (trig_level == arm_level)
+                
+                if part_match and level_match:
+                    indigo.trigger.execute(trigger)
+
+        elif cmd_id == 'ALARM':
+            for trigger in self.getTriggersForType(['alarm']):
+                part_num = msg['partition_number']
+                alarm_gen_code = msg['alarm_general_type_code']
+
+                trig_part = any_if_blank(trigger.pluginProps['address'])
+                trig_gen_code = any_if_blank(trigger.pluginProps['alarmGeneralType'])
+
+                part_match = (trig_part == 'any') or (int(trig_part) == part_num)
+                code_match = (trig_gen_code == 'any') or (int(trig_gen_code) == alarm_gen_code)
+                
+                if part_match and code_match:
+                    indigo.trigger.execute(trigger)

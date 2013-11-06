@@ -3,6 +3,7 @@ import Queue
 import serial
 import sys
 import time
+import traceback
 
 from concord_commands import RX_COMMANDS, \
     build_cmd_equipment_list, EQPT_LIST_REQ_TYPES, \
@@ -457,6 +458,7 @@ class AlarmPanelInterface(object):
         except Exception, ex:
             self.logger.error("Problem handling command %r\n%r" % \
                                   (ex, encode_message_to_ascii(msg)))
+            self.logger.error(traceback.format_exc())
 
 
     def send_nak(self):

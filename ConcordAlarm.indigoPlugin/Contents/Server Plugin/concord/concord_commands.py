@@ -212,7 +212,7 @@ def cmd_zone_data(msg):
           'group_number': msg[4],
           'zone_number': (msg[5] << 8) + msg[6],
           'zone_type': ZONE_TYPES.get(msg[7], 'Unknown'),
-          'zone_state': zone_state_list(msg[8]),
+          'zone_state': build_state_list(msg[8], ZONE_STATES),
           'zone_text': '',
           'zone_text_tokens': [ ],
           }

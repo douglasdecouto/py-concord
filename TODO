@@ -1,61 +1,54 @@
-X - Handle multiple partitions
+- Add actions to arm, adjust keypad volume, and speaker volume
+- Touchpad device
+- Temp & timeAndDate
+- keyfob command: just process for logging
+- user lights, what is going on here?  process for logging
+- Handle 'clear dynamic image' & automation event lost commands.  What to with existing indigo devices?  Set all states to 'unknown'?
+- process superbus device commands, if only for logging them
+- output data commands, for logging
+- user code commands, see what's in there...
 - Create way to send synthetic events (e.g. alarms) into plugin for testing
-- **Handle alarm events.  This includes cancels & restorals**
-X - Handle arming level and map to partitions.  
-- when restarting plugin, close serial port if already open ????
-- plugin doesn't shutdown properly, indigo has to kill the thread?
-- properly handle comm error, e.g. serial port device goes away and tx/rx fails" put panel and devices in correct error state
-- flush input & output on opening
-- fix panel info handling (get serial / rev numbers right)
-- TCP proxy that speaks 'Concord' (AD2USB ser2sock?)
-- create new event - 'PROXY TROUBLE'  that the proxy can send to the plugin!
-- Keep alive
-X - Fix zone text handling: spaces, backspace, sentence case
-X - fixup zone states: unknown, tripped, OK, problem
-- comm loop: be greedy about reading data before sending any; think panel doesn't want to deal with incoming messages while it is waiting for acks on outgoing
-X - Debug mode handling / log levels
-- split out the two lines for LCD display
 - Detect '*' in LCD output; expose to Indigo (but would this only tell us something we could find out from another query -- e.g. if it's * but that's only because windows are open, then who cares; how to detect other issues on top of that?)  AD2USB had bug with sending '*', perhaps we have same big although different devices?
 - Email reporting of what's open, closed; pick zones that can be open at night. -- Just use indigo device groups?
+- Keep alive
+- TCP proxy that speaks 'Concord' (AD2USB ser2sock?)
+- Track time of last alarm event
+- comm loop: be greedy about reading data before sending any; think panel doesn't want to deal with incoming messages while it is waiting for acks on outgoing
+- create new event - 'PROXY TROUBLE'  that the proxy can send to the plugin!
+- fix panel info handling (get serial / rev numbers right)
+- flush input & output on opening
+- plugin doesn't shutdown properly, indigo has to kill the thread?
+- properly handle comm error, e.g. serial port device goes away and tx/rx fails" put panel and devices in correct error state
+- split out the two lines for LCD display
 - thread safety for message handlers poking around in zone/partition data structures
-- different sets of partition states between partition info cmd and arming cmd; try to handle in a useful manner
+- when restarting plugin, close serial port if already open ????
+
+- Should partition have explicit alarm state?
 
 
-Handling config and config changes:
+X - **Handle alarm events.  This includes cancels & restorals**
+X - Can a zone/partition device change its config while active?  (i.e. after startComm but before stopComm)?  Answer: no, we can rely on start/StopComm
+X - Debug mode handling / log levels
+X - Fix zone text handling: spaces, backspace, sentence case
+X - Handle arming level and map to partitions.  
+X - Handle multiple partitions
 X - Not sure about how to parameterize a new zone dev when we have no panel info; seems to come up with 'zeros' as zone/part id; what about if we edit a configuration for an existing zone dev? 
 X - XXX use props or state to hold zone config info?  If props, how to get zone/part visible to user.  Answer: 'address' field.  OK.  So revamp how startComm/stopComm work...
-X - Can a zone/partition device change its config while active?  (i.e. after startComm but before stopComm)?  Answer: no, we can rely on start/StopComm
+X - different sets of partition states between partition info cmd and arming cmd; try to handle in a useful manner
+X - fixup zone states: unknown, tripped, OK, problem
 
 
 
 
 Bigger:
+- Handle Advent alarms?
 - integrate with Honey?
 - generic alarm plugin?
 
-Models:
+Other alarm panels with plugins:
 - Cynical Honey
 - Caddx
 - AD2USB -- also for Honeywell, like Cynical
 - DSC
 
 
-This happened when I armed the alarm silently (push 5, Stay at keypad)
-  GE Concord Alarm Panel          [DEBUG] Handling panel message FEAT_STATE, Feature State
-  GE Concord Alarm Panel          [DEBUG] Handling panel message ARM_LEVEL, Arming Level
-  GE Concord Alarm Panel          [INFO] Updating partition 1 with ARM_LEVEL message
-  GE Concord Alarm Panel          [DEBUG] Handling panel message ALARM, Alarm/Trouble
-  Error                           cannot update device state for key panelState to value alarm (invalid enumeration value)
-  GE Concord Alarm Panel          [DEBUG] Handling panel message ALARM, Alarm/Trouble
-  Error                           cannot update device state for key panelState to value alarm (invalid enumeration value)
-  GE Concord Alarm Panel          [DEBUG] Handling panel message DELAY, Entry/Exit Delay
-  GE Concord Alarm Panel          [DEBUG] Handling panel message LIGHTS_STATE, Lights State Command
-  GE Concord Alarm Panel          [DEBUG] Handling panel message LIGHTS_STATE, Lights State Command
-  GE Concord Alarm Panel          [DEBUG] Handling panel message LIGHTS_STATE, Lights State Command
-  GE Concord Alarm Panel          [DEBUG] Handling panel message LIGHTS_STATE, Lights State Command
-  GE Concord Alarm Panel          [DEBUG] Handling panel message LIGHTS_STATE, Lights State Command
-
-5 Nov 2013 20:26:29
-  GE Concord Alarm Panel          [DEBUG] Handling panel message DELAY, Entry/Exit Delay
-  GE Concord Alarm Panel          [DEBUG] Handling panel message FEAT_STATE, Feature State
-  GE Concord Alarm Panel          [DEBUG] Handling panel message DELAY, Entry/Exit Delay
