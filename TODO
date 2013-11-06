@@ -1,5 +1,5 @@
+- Make zones a subset of onOff device or sensors?  Will that make them work better in indigo touch?
 - Add actions to arm, adjust keypad volume, and speaker volume
-- Touchpad device
 - Temp & timeAndDate
 - keyfob command: just process for logging
 - user lights, what is going on here?  process for logging

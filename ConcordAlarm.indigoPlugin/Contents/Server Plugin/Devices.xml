@@ -60,6 +60,62 @@
     <UiDisplayStateId>panelState</UiDisplayStateId>
   </Device>
 
+
+  <Device type="custom" id="touchpad">
+    <Name>Touchpad</Name>
+
+    <ConfigUI>
+      <SupportURL>http://decouto.bm</SupportURL>
+      <Field type="menu" id="address" defaultValue="1">
+	<Label>Partition:</Label>
+	<List class="self" filter="N/A" method="partitionFilter"/>
+      </Field>
+    </ConfigUI>
+
+    <States>
+      <State id="lcdLine1" defautValue="" readonly="YES">
+        <TriggerLabel>LCD Line 1 is</TriggerLabel>
+        <ControlPageLabel>LCD Line 1</ControlPageLabel>
+        <ValueType>String</ValueType>
+      </State>
+      <State id="lcdLine2" defautValue="" readonly="YES">
+        <TriggerLabel>LCD Line 2 is</TriggerLabel>
+        <ControlPageLabel>LCD Line 2</ControlPageLabel>
+        <ValueType>String</ValueType>
+      </State>
+
+      <!-- Plugin will keep the touchpad's partition state synced with
+           that of the corresponding partition. 
+      -->
+      <State id="partitionState" defaultValue="unknown">
+	<ValueType>
+          <!-- Unfortunately don't deem to be able to use the dynamic
+               filter to populate the list of valid partition
+               states. 
+          -->
+          <!-- <List class="self" filter="N/A" method="partitionStateFilter"/> -->
+          <List>
+            <Option value="unknown">Unknown</Option>
+	    <Option value="ready">Ready</Option> 
+	    <Option value="unready">Not Ready</Option> 
+	    <Option value="zone_test">Phone Test</Option>
+            <Option value="phone_test">Phone Test</Option>
+            <Option value="sensor_test">Sensor Test</Option>
+	    <Option value="stay">Armed Stay</Option>
+	    <Option value="away">Armed Away</Option>
+	    <Option value="night">Armed Night</Option>
+	    <Option value="silent">Armed Silent</Option>
+	  </List>
+	</ValueType>
+	<TriggerLabel>Partition State is</TriggerLabel>
+	<ControlPageLabel>Partition State</ControlPageLabel>
+      </State>
+    </States>
+
+    <UiDisplayStateId>partitionState</UiDisplayStateId>
+  </Device>
+
+
   <Device type="custom" id="partition">
     <Name>Partition</Name>
 
@@ -240,5 +296,6 @@
     <UiDisplayStateId>zoneState</UiDisplayStateId>
 
   </Device>
+
 
 </Devices>

@@ -64,14 +64,19 @@ def zonekey(zoneDev):
             int(zoneDev.pluginProps['zoneNumber']))
     
 def partkey(partDev):
-    """ Return internal key for supplied Indigo partition device. """
-    assert partDev.deviceTypeId == 'partition'
+    """ Return internal key for supplied Indigo partition or touchpad device. """
+    assert partDev.deviceTypeId in ('partition', 'touchpad')
     return int(partDev.address)
 
 def any_if_blank(s):
     if s == '': return 'any'
     else: return s
 
+
+#
+# Touchpad display when no data available
+#
+NO_DATA = '<NO DATA>'
 
 #
 # XML configuration filters
@@ -119,7 +124,6 @@ class Plugin(indigo.PluginBase):
 
         self.processPluginConfigPrefs(pluginPrefs)
 
-        # TODO: handle multiple partitions
         self.panel = None
         self.panelDev = None
         self.panelInitialQueryDone = False
@@ -133,6 +137,12 @@ class Plugin(indigo.PluginBase):
         self.parts = { } # partition number -> partition info
         self.partDevs = { } # partition number -> active Indigo partition device
         self.partKeysById = { } # partition device ID -> partition number
+        
+        # Touchpads don't actually have any of their own internal
+        # data; they just mirror their configured partition.  To aid
+        # that, we will attach touchpad display information to the
+        # internal partition state.
+        self.touchpadDevs = { } # partition number -> (touchpad device ID -> Indigo touchpad device)
 
         # Triggers are keyed by Indigo trigger ID; these are used to
         # fire off the events described in our Events.xml.
@@ -215,10 +225,12 @@ class Plugin(indigo.PluginBase):
         self.logger.debug("Validating %s device config..." % typeId)
         dev = indigo.devices[devId]
         errors = indigo.Dict()
+
         if typeId == 'panel':
             if self.panelDev is not None and self.panelDev.id != devId:
                 errors['theLabel'] = "There can only be one panel device"
             valuesDict['address'] = self.serialPortUrl
+
         elif typeId == 'partition':
             try: address = int(valuesDict['address'])
             except ValueError: address = -1
@@ -226,6 +238,16 @@ class Plugin(indigo.PluginBase):
                 errors['address'] = "Partition must be set to a valid value (1-%d)" % concord.CONCORD_MAX_ZONE
             if address in self.partDevs:
                 errors['address'] = "Another partition device has the same number"
+
+        elif typeId == 'touchpad':
+            try: address = int(valuesDict['address'])
+            except ValueError: address = -1
+            if address < 1 or address > concord.CONCORD_MAX_ZONE:
+                errors['address'] = "Partition must be set to a valid value (1-%d)" % concord.CONCORD_MAX_ZONE
+            # We will let you multiple touchpads for the same
+            # partition.  This may be a bit arbitrary but sort of
+            # mirrors 'real life'
+
         elif typeId == 'zone':
             try: part = int(valuesDict['partitionNumber'])
             except ValueError: part = -1
@@ -238,6 +260,7 @@ class Plugin(indigo.PluginBase):
             if (part, zone) in self.zoneDevs:
                 errors['zoneNumber'] = "Another zone device in this partition has the same number"
             valuesDict['address'] = "%d/%d" % (zone, part)
+
         else:
             raise Exception("Unknown device type %s" % typeId)
         if len(errors) > 0:
@@ -300,6 +323,13 @@ class Plugin(indigo.PluginBase):
                 return
             self.partDevs[pk] = dev
             self.updatePartitionDeviceState(dev, pk)
+
+        elif dev.deviceTypeId == 'touchpad':
+            pk = partkey(dev)
+            if pk not in self.touchpadDevs:
+                self.touchpadDevs[pk] = { }
+            self.touchpadDevs[pk][dev.id] = dev
+            self.updateTouchpadDeviceState(dev, pk)
 
         else:
             raise Exception("Unknown device type: %r" % dev.deviceTypeId)
@@ -487,7 +517,37 @@ class Plugin(indigo.PluginBase):
                       for gen_code, (gen_name, specific_map)
                       in sorted(concord_alarm_codes.ALARM_CODES.iteritems())]
         return [('any', 'Any')] + gen_codes
+
+    def getPartitionState(self, part_key):
+        assert part_key in self.parts
+        part_data = self.parts[part_key]
+        arm_level = part_data.get('arming_level_code', -1)
+        part_state = PART_ARM_STATE_MAP.get(arm_level, 'unknown')
+        return part_state
     
+    def updateTouchpadDeviceState(self, touchpad_dev, part_key):
+        if part_key not in self.parts:
+            self.logger.debug("Unable to update Indigo touchpad device %s - partition %d; no knowledge of that partition" % (touchpad_dev.name, part_key))
+            touchpad_dev.updateStateOnServer('partitionState', 'unknown')
+            touchpad_dev.updateStateOnServer('lcdLine1', NO_DATA)
+            touchpad_dev.updateStateOnServer('lcdLine2', NO_DATA)
+            return
+
+        part_data = self.parts[part_key]
+        lcd_data = part_data.get('display_text', '%s\n%s' % (NO_DATA, NO_DATA))
+        # Throw out the blink information.  Not sure how to handle it.
+        lcd_data = lcd_data.replace('<blink>', '')
+        lines = lcd_data.split('\n')
+        if len(lines) > 0:
+            touchpad_dev.updateStateOnServer('lcdLine1', lines[0].strip())
+        else:
+            touchpad_dev.updateStateOnServer('lcdLine1', NO_DATA)
+        if len(lines) > 1:
+            touchpad_dev.updateStateOnServer('lcdLine2', lines[1].strip())
+        else:
+            touchpad_dev.updateStateOnServer('lcdLine2', NO_DATA)
+        touchpad_dev.updateStateOnServer('partitionState', self.getPartitionState(part_key))
+
     def updatePartitionDeviceState(self, part_dev, part_key):
         if part_key not in self.parts:
             self.logger.debug("Unable to update Indigo partition device %s - partition %d; no knowledge of that partition" % (part_dev.name, part_key))
@@ -497,11 +557,8 @@ class Plugin(indigo.PluginBase):
             part_dev.updateStateOnServer('delay', 'Unknown')
             return
 
+        part_state = self.getPartitionState(part_key)
         part_data = self.parts[part_key]
-
-        arm_level = part_data.get('arming_level_code', -1)
-        part_state = PART_ARM_STATE_MAP.get(arm_level, 'unknown')
-
         arm_user  = part_data.get('user_info', 'Unknown User')
         features  = part_data.get('feature_state', ['Unknown'])
 
@@ -614,7 +671,7 @@ class Plugin(indigo.PluginBase):
             else:
                 self.logger.warn("No Indigo zone device for zone %s" % zone_name)
 
-        elif cmd_id in ('PART_DATA', 'ARM_LEVEL', 'FEAT_STATE', 'DELAY'):
+        elif cmd_id in ('PART_DATA', 'ARM_LEVEL', 'FEAT_STATE', 'DELAY', 'TOUCHPAD'):
             part_num = msg['partition_number']
             if part_num in self.parts:
                 self.logger.info("Updating partition %d with %s message" % (part_num, cmd_id))
@@ -630,6 +687,16 @@ class Plugin(indigo.PluginBase):
                 self.updatePartitionDeviceState(self.partDevs[part_num], part_num)
             else:
                 self.logger.warn("No Indigo partition device for partition %d" % part_num)
+
+            # We update the touchpad even when it's not a TOUCHPAD
+            # message so that the touchpad device can track the
+            # underluing partition state.  Later on we may also add
+            # other features to mirror the LEDs on an actual touchpad
+            # as well.
+            if part_num in self.touchpadDevs:
+                for dev_id, dev in self.touchpadDevs[part_num].iteritems():
+                    self.updateTouchpadDeviceState(dev, part_num)
+
 
         elif cmd_id == 'EQPT_LIST_DONE':
             if not self.panelInitialQueryDone:
