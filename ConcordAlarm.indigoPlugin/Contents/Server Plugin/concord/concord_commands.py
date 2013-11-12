@@ -8,6 +8,9 @@ from concord_helpers import BadMessageException, ascii_hex_to_byte
 from concord_tokens import decode_text_tokens
 from concord_alarm_codes import ALARM_CODES
 
+STAR = 0xa
+HASH = 0xb
+
 KEYPRESS_CODES = {
     0x00: '0',
     0x01: '1',
@@ -137,6 +140,9 @@ def bytes_to_num(data):
     num += ((data[0] << 24) &  0xff000000)
     return num
     
+def num_to_bytes(num):
+    return [ 0xff & (num >> 24), 0xff & (num >> 16), 0xff & (num >> 8), 0xff & num ]
+
 def cmd_panel_type(msg):
     ck_msg_len(msg, 0x01, 0x0b)
     assert msg[1] == 0x01, "Unexpected command type 0x02x" % msg[1]
@@ -317,6 +323,9 @@ ALARM_SOURCE_TYPE = {
     4: "Remote Phone",
 }
 
+# Reverse map of alarm source name to type code
+ALARM_SOURCE_NAME = dict((v, k) for k, v in ALARM_SOURCE_TYPE.iteritems())
+
 
 def cmd_alarm_trouble(msg):
     assert (msg[1], msg[2]) == (0x22, 0x02), "Unexpected command type"
@@ -336,6 +345,17 @@ def cmd_alarm_trouble(msg):
     d['alarm_specific_type'] = spec_type
     
     return d
+
+def build_cmd_alarm_trouble(partition, source_type, source_number, 
+                             general_type, specific_type, event_data=0):
+    assert source_type in ALARM_SOURCE_NAME
+    source_code = ALARM_SOURCE_NAME[source_type]
+    msg = [ 0x0d, 0x22, 0x02, partition, 0, source_code ] + \
+        num_to_bytes(source_number)[1:] + \
+        [ general_type, specific_type ] + \
+        num_to_bytes(event_data)[2:]
+    assert len(msg) == 0x0d
+    return msg
 
 # Concord touchpad message types
 TOUCHPAD_MSG_TYPE = {

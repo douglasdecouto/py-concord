@@ -1,17 +1,79 @@
 <?xml version="1.0"?>
 <MenuItems>
+
+  <MenuItem id="arm">
+    <Name>Arm...</Name>
+    <CallbackMethod>menuArmDisarm</CallbackMethod>
+    <ConfigUI>
+      <Field type="menu" id="partition" defaultValue="1">
+	<Label>Partition:</Label>
+	<List class="self" filter="N/A" method="partitionFilter"/>
+      </Field>
+      <Field id="action" type="menu" defaultValue="stay">
+        <Label>Arm to</Label>
+        <List>
+          <Option value="stay">Stay</Option>
+          <Option value="away">Away</Option>
+        </List>
+      </Field>
+      <Field id="silent" type="checkbox" defaultValue="false">
+        <Label>Silent arm</Label>
+      </Field>
+      <Field id="bypass" type="checkbox" defaultValue="false">
+        <Label>Bypass open sensors</Label>
+      </Field>
+    </ConfigUI>
+  </MenuItem>
+
+
+  <MenuItem id="sep0"/>
+
+  <MenuItem id="setVolume">
+    <Name>Set Voice Volume</Name>
+    <CallbackMethod>menuSetVolume</CallbackMethod>
+    <ConfigUI>
+      <Field type="menu" id="partition" defaultValue="1">
+	<Label>Partition:</Label>
+	<List class="self" filter="N/A" method="partitionFilter"/>
+      </Field>
+      <Field id="code" type="textField" secure="true">
+        <Label>Access code</Label>
+      </Field>
+      <Field id="volume" type="menu" defaultValue="3">
+        <Label>Volume level</Label>
+        <List>
+          <Option value="0">Off</Option>
+          <Option value="1">1</Option>
+          <Option value="2">2</Option>
+          <Option value="3">3</Option>
+          <Option value="4">4</Option>
+          <Option value="5">5</Option>
+          <Option value="6">6</Option>
+          <Option value="7">7</Option>
+        </List>
+      </Field>
+    </ConfigUI>
+  </MenuItem>
+  
+  <MenuItem id="sep1"/>
+
   <MenuItem id="refreshDynamicState">
     <Name>Refresh Dynamic State</Name>
     <CallbackMethod>menuRefreshDynamicState</CallbackMethod>
   </MenuItem>
+
   <MenuItem id="refreshAllEquipment">
     <Name>Refresh Complete Equipment List</Name>
     <CallbackMethod>menuRefreshAllEquipment</CallbackMethod>
   </MenuItem>
+
   <MenuItem id="refreshZones">
     <Name>Refresh Zone List and States</Name>
     <CallbackMethod>menuRefreshZones</CallbackMethod>
   </MenuItem>
+
+  <MenuItem id="sep2"/>
+
   <MenuItem id="createZones">
     <Name>Create Indigo Zone Devices from Panel</Name>
     <CallbackMethod>menuCreateZoneDevices</CallbackMethod>
@@ -19,10 +81,34 @@
       <Field id="useTitleCase" type="checkbox" defaultValue="true">
         <Label>Convert zone names to title case</Label>
       </Field>
+      <Field id="prefix" type="textField" defaultValue="">
+        <Label>Prefix for zone names</Label>
+      </Field>
+      <Field id="suffix" type="textField" defaultValue="">
+        <Label>Suffix for zone names</Label>
+      </Field>
     </ConfigUI>
   </MenuItem>
+
   <MenuItem id="dumpZones">
     <Name>Dump Zone Info to Log</Name>
     <CallbackMethod>menuDumpZonesToLog</CallbackMethod>
   </MenuItem>
+
+  <MenuItem id="sendTestAlarm">
+    <Name>Send Test Alarm Message to Plugin</Name>
+    <CallbackMethod>menuSendTestAlarm</CallbackMethod>
+    <ConfigUI>
+      <Field type="menu" id="partition" defaultValue="1">
+	<Label>Partition:</Label>
+	<List class="self" filter="N/A" method="partitionFilter"/>
+      </Field>
+      <Field id="alarmCode" type="textField" defaultValue="1.36">
+        <Label>Two part alarm code (i.e. 1.36)</Label>
+      </Field>
+    </ConfigUI>
+  </MenuItem>
+
+
+
 </MenuItems>

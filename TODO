@@ -1,5 +1,7 @@
 - Make zones a subset of onOff device or sensors?  Will that make them work better in indigo touch?
-- Add actions to arm, adjust keypad volume, and speaker volume
+- Add actions to arm
+- Action to adjust keypad volume
+- Action to adjust speaker volume
 - Temp & timeAndDate
 - keyfob command: just process for logging
 - user lights, what is going on here?  process for logging
@@ -7,7 +9,7 @@
 - process superbus device commands, if only for logging them
 - output data commands, for logging
 - user code commands, see what's in there...
-- Create way to send synthetic events (e.g. alarms) into plugin for testing
+
 - Detect '*' in LCD output; expose to Indigo (but would this only tell us something we could find out from another query -- e.g. if it's * but that's only because windows are open, then who cares; how to detect other issues on top of that?)  AD2USB had bug with sending '*', perhaps we have same big although different devices?
 - Email reporting of what's open, closed; pick zones that can be open at night. -- Just use indigo device groups?
 - Keep alive
@@ -19,13 +21,13 @@
 - flush input & output on opening
 - plugin doesn't shutdown properly, indigo has to kill the thread?
 - properly handle comm error, e.g. serial port device goes away and tx/rx fails" put panel and devices in correct error state
-- split out the two lines for LCD display
+X - split out the two lines for LCD display
 - thread safety for message handlers poking around in zone/partition data structures
 - when restarting plugin, close serial port if already open ????
 
 - Should partition have explicit alarm state?
 
-
+X - Create way to send synthetic events (e.g. alarms) into plugin for testing
 X - **Handle alarm events.  This includes cancels & restorals**
 X - Can a zone/partition device change its config while active?  (i.e. after startComm but before stopComm)?  Answer: no, we can rely on start/StopComm
 X - Debug mode handling / log levels

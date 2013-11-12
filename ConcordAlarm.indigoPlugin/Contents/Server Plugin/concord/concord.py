@@ -7,7 +7,8 @@ import traceback
 
 from concord_commands import RX_COMMANDS, \
     build_cmd_equipment_list, EQPT_LIST_REQ_TYPES, \
-    build_dynamic_data_refresh, build_keypress
+    build_dynamic_data_refresh, build_keypress, \
+    build_cmd_alarm_trouble
 
 from concord_helpers import ascii_hex_to_byte, total_secs
 
@@ -131,7 +132,7 @@ class SerialInterface(object):
         so the message returned from here may be as short as only one byte
         (the length byte).
         
-        May raise TimeoutException if there is atimeout while reading the
+        May raise TimeoutException if there is a timeout while reading the
         message.
         
         If any special control character is encountered while reading the
@@ -241,6 +242,11 @@ class AlarmPanelInterface(object):
         # valid checksum.
         self.tx_queue = Queue.Queue()
 
+        # This queue hold "fake" synthetic messages that the client
+        # can send to itself.  If the panel interface seem messages on
+        # this queue, it will 'receive' them.
+        self.fake_rx_queue = Queue.Queue()
+
         self.reset_pending_tx()
 
         self.message_handlers = { } # Command ID -> list of message handlers for that ID.
@@ -274,7 +280,7 @@ class AlarmPanelInterface(object):
                 self.logger.debug("Spurious NAK")
             else:
                 self.logger.debug("Possible NAK")
-            self.maybe_resend_message("NAK")
+                self.maybe_resend_message("NAK")
         else:
             self.logger.info("Unknown control char 0x%02x" % cc)
 
@@ -286,7 +292,7 @@ class AlarmPanelInterface(object):
     def reset_pending_tx(self):
         self.tx_time = None
         self.tx_pending = None
-        self.tx_num_retries = 0
+        self.tx_num_attempts = 0
     
     def send_message(self, msg, retry=False):
         """ 
@@ -317,7 +323,8 @@ class AlarmPanelInterface(object):
     # XXX include length bytes in the front?  YES
     def enqueue_msg_for_tx(self, msg):
         """
-        Put *msg* on the transmit queue, and append a checksum.
+        Put *msg* on the transmit queue, and append a checksum; *msg*
+        is modified.
 
         This method may be called by the main thread; messages
         enqueued here will be consumed and transmitted by the
@@ -325,6 +332,17 @@ class AlarmPanelInterface(object):
         """
         msg.append(compute_checksum(msg))
         self.tx_queue.put(msg)
+
+    def enqueue_synthetic_msg_for_rx(self, msg):
+        """
+        Put *msg* on the 'fake' receive queue; it will be 'received'
+        by this panel interface object.  The checksum will be
+        calculated and appended, but the length byte is required at
+        the start of the message. *msg* is modified.
+        """
+        msg.append(compute_checksum(msg))
+        self.fake_rx_queue.put(msg)
+        
 
     def stop_loop(self):
         self.tx_queue.put(STOP)
@@ -344,6 +362,17 @@ class AlarmPanelInterface(object):
             # case...)
             no_inputs = True
             no_outputs = True
+
+            # 
+            # Handle any synthetic messages and loop them back to us.
+            #
+            if not self.fake_rx_queue.empty():
+                no_inputs = False
+                msg = self.fake_rx_queue.get()
+                self.logger.debug("Received synthetic message")
+                # Don't need to confirm checksum as we computed it
+                # ourselves!
+                self.handle_message(msg)
 
             # 
             # Handle incoming messages.
@@ -489,5 +518,11 @@ class AlarmPanelInterface(object):
         self.enqueue_msg_for_tx(msg)
         
         
-
+    def inject_alarm_message(self, partition, general_type, specific_type, event_data=0):
+        msg = build_cmd_alarm_trouble(partition, "System", 1,
+                                      general_type, specific_type)
+        self.enqueue_synthetic_msg_for_rx(msg)
+        
+                
+                
 

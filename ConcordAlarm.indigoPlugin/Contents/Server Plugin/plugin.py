@@ -8,6 +8,7 @@ import sys
 import time
 
 from concord import concord, concord_commands, concord_alarm_codes
+from concord.concord_commands import STAR, HASH
 
 # Note the "indigo" module is automatically imported and made available inside
 # our global name space by the host process.
@@ -77,6 +78,20 @@ def any_if_blank(s):
 # Touchpad display when no data available
 #
 NO_DATA = '<NO DATA>'
+
+#
+# Keypad sequences for various actions
+#
+KEYPRESS_SILENT = [ 5 ]
+KEYPRESS_ARM_STAY = [ 2 ]
+KEYPRESS_ARM_AWAY = [ 3 ]
+KEYPRESS_BYPASS = [ 0xb ] # '#'
+KEYPRESS_TOGGLE_CHIME = [ 7, 1 ]
+
+KEYPRESS_EXIT_PROGRAM = [ STAR, 0, 0, HASH ]
+
+
+
 
 #
 # XML configuration filters
@@ -375,8 +390,19 @@ class Plugin(indigo.PluginBase):
                 return
             self.logger.debug("Deleting partition dev %d" % dev.id)
             del self.partDevs[pk]
+
+        elif dev.deviceTypeId == 'touchpad':
+            pk = partkey(dev)
+            if pk not in self.partDevs:
+                self.logger.warn("Touchpad device %s - partition %d - is not known, ignoring" % (dev.name, pk))       
+            if dev.id not in self.touchpadDevs[pk]:
+                self.logger.warn("Touchpad device id %d is not known" % dev.id)
+            else:
+                del self.touchpadDevs[pk][dev.id]
+
         else:
             raise Exception("Unknown device type: %r" % dev.deviceTypeId)
+
 
     def runConcurrentThread(self):
         try:
@@ -394,8 +420,120 @@ class Plugin(indigo.PluginBase):
             self.logger.debug("Got StopThread in runConcurrentThread()")
             pass    
 
+    def isReadyToArm(self, partition_num):
+        """ 
+        Returns pair: first element is True if it's ok to arm;
+        otherwise the first element is False and the second element is
+        the (string) reason why it is not possible to arm.
+        """
+        if self.panel is None:
+            return False, "The panel is not active"
+
+        # TODO: check all the zones, etc.
+        return True, "Partition ready to arm"
+
+    
+    def checkPartition(self, valuesDict, errorsDict):
+        try:
+            part = int(valuesDict['partition'])
+        except ValueError: part = -1
+        if part < 1 or part > concord.CONCORD_MAX_ZONE:
+            errorsDict['partition'] = "Partition must be set to a valid value (1-%d)" % concord.CONCORD_MAX_ZONE
+        return part
 
     # MenuItems.xml actions:
+    def menuArmDisarm(self, valuesDict, itemId):
+        self.logger.debug("Menu item: Arm/Disarm: %s" % str(valuesDict))
+        errors = indigo.Dict()
+
+        arm_silent = valuesDict['silent']
+        bypass = valuesDict['bypass']
+        action = valuesDict['action']
+
+        part = self.checkPartition(valuesDict, errors)
+        if part > 0:
+            can_arm, reason = self.isReadyToArm(part)
+            if not can_arm:
+                errors['partition'] = reason
+
+        if self.panel is None:
+            errors['partition'] = "The alarm panel is not active"
+
+        if len(errors) > 0:
+            return False, valuesDict, errors
+
+        keys = [ ]
+        if arm_silent:
+            keys += KEYPRESS_SILENT
+    
+        if action == 'stay':
+            keys += KEYPRESS_ARM_STAY
+        elif action == 'away':
+            keys += KEYPRESS_ARM_AWAY
+        else:
+            assert False, "Unknown arming action type"
+
+        if bypass:
+            keys += KEYPRESS_BYPASS
+
+        try:
+            self.panel.send_keypress(keys, part)
+        except Exception, ex:
+            self.logger.error("Problem trying to arm action=%r, silent=%r, bypass=%r" % \
+                                  (action, arm_silent, bypass))
+            self.logger.error(str(ex))
+            errors['partition'] = str(ex)
+            return False, valuesDict, errors
+        
+        return True, valuesDict
+
+
+    def strToCode(self, s):
+        if len(s) != 4:
+            raise ValueError("Too short, must be 4 characters")
+        v = [ ]
+        for c in s:
+            n = ord(c) - ord('0')
+            if n < 0 or n > 9:
+                raise ValueError("Non-numeric digit")
+            v += [ n ]
+        return v
+
+    def menuSetVolume(self, valuesDict, itemId):
+        self.logger.debug("Menu item: Set volume: %s" % str(valuesDict))
+        errors = indigo.Dict()
+
+        part = self.checkPartition(valuesDict, errors)
+
+        try: code_keys = self.strToCode(valuesDict['code'])
+        except ValueError: errors['code'] = "User code must be four digits"
+
+        try: 
+            volume = int(valuesDict['volume'])
+            if volume < 0 or volume > 7: raise ValueError()
+        except ValueError:
+            errors['volume'] = "Volume must be between 0 (off) and 7 inclusive"
+
+        if self.panel is None:
+            errors['partition'] = "The alarm panel is not active"
+
+        if len(errors) > 0:
+            return False, valuesDict, errors
+
+        keys = [ 9 ] + code_keys + [ STAR, 0, 4, 4, volume, HASH ]
+        keys += KEYPRESS_EXIT_PROGRAM
+
+        try:
+            self.panel.send_keypress(keys, part)
+        except Exception, ex:
+            self.logger.error("Problem trying to set volume")
+            self.logger.error(str(ex))
+            errors['volume'] = str(ex)
+            return False, valuesDict, errors
+        
+        return True, valuesDict
+
+
     def menuRefreshDynamicState(self):
         self.logger.debug("Menu item: Refresh Dynamic State")
         if not self.panel:
@@ -417,6 +555,7 @@ class Plugin(indigo.PluginBase):
         else:
             self.panel.request_zones()
 
+
     def menuCreateZoneDevices(self, valuesDict, itemId):
         """
         Create Indigo Zone devices to match the devices in the panel.
@@ -426,7 +565,15 @@ class Plugin(indigo.PluginBase):
         """
         self.logger.debug("Creating Indigo Zone devices from panel data")
         use_title_case = valuesDict["useTitleCase"]
+        prefix = valuesDict["prefix"]
+        suffix = valuesDict["suffix"]
         self.logger.debug("   useTitleCase: %r" % use_title_case)
+        self.logger.debug("   prefix: %r" % prefix)
+        self.logger.debug("   suffix: %r" % suffix)
+
+        self.logger.debug("Getting list of existing Indigo device names")
+        device_names = set([d.name for d in indigo.devices])
+
         for zk, zone_data in self.zones.iteritems():
             part_num, zone_num = zk
             zone_name = zone_data.get('zone_text', '')
@@ -447,11 +594,22 @@ class Plugin(indigo.PluginBase):
                     zone_name = '%s - %d' % (zone_type, zone_num)
                 else:
                     zone_name = 'Unknown Zone - %d' % zone_num
+
+            # Add on user-specified prefix/suffix
+            zone_name = prefix + zone_name + suffix
+            unique_zone_name = zone_name
+            
+            # Check and ensure uniqueness against other Indigo device names.
+            counter = 1
+            while unique_zone_name in device_names:
+                unique_zone_name = "%s %d" % (zone_name, counter)
+                counter += 1
+            
             if zk not in self.zoneDevs:
-                self.logger.info("Creating Zone %d, partition %d - %s" % (zone_num, part_num, zone_name))
+                self.logger.info("Creating Zone %d, partition %d - %s" % (zone_num, part_num, unique_zone_name))
                 zone_dev = indigo.device.create(protocol=indigo.kProtocol.Plugin, 
                                                 address="%d/%d" % (zone_num, part_num),
-                                                name=zone_name,
+                                                name=unique_zone_name,
                                                 description=zone_type,
                                                 deviceTypeId="zone",
                                                 props={'partitionNumber': part_num, 
@@ -464,7 +622,7 @@ class Plugin(indigo.PluginBase):
             else:
                 zone_dev = self.zoneDevs[zk]
                 self.logger.info("Device %d already exists for Zone %d, partition %d - %s" % \
-                                     (zone_dev.id, zone_num, part_num, zone_name))
+                                     (zone_dev.id, zone_num, part_num, zone_dev.name))
         errors = indigo.Dict()
         return (True, valuesDict, errors)
 
@@ -496,11 +654,45 @@ class Plugin(indigo.PluginBase):
                                        (dev.name, dev.id, dev.states['zoneState'], zone_num, part_num))
 
 
+    def menuSendTestAlarm(self, valuesDict, itemId):
+        errors = indigo.Dict()
+        try:
+            part = int(valuesDict['partition'])
+        except ValueError: part = -1
+        if part < 1 or part > concord.CONCORD_MAX_ZONE:
+            errors['partition'] = "Partition must be set to a valid value (1-%d)" % concord.CONCORD_MAX_ZONE
+
+        code_v = valuesDict['alarmCode'].split('.')
+        CODE_ERR = "Alarm code must be two numbers (>0) separared by a dot, e.g. 3.21"
+        if len(code_v) == 2:
+            try:
+                gen = int(code_v[0])
+                spec = int(code_v[1])
+                if gen < 0 or spec < 0:
+                    raise ValueError()
+            except ValueError:
+                errors['alarmCode'] = CODE_ERR
+        else:
+            error['alarmCode'] = CODE_ERR
+
+        if self.panel is None:
+            errors['partition'] = "The alarm panel is not active"
+
+        if len(errors) > 0:
+            return (False, valuesDict, errors)
+        else:
+            self.panel.inject_alarm_message(part, gen, spec)
+            return (True, valuesDict)
+
+
+        
+    #
     # Plugin Actions object callbacks (pluginAction is an Indigo plugin action instance)
-    def arm(self, pluginAction):
-        self.logger.debug("'arm' action called:\n" + str(pluginAction))
+    #
 
-
+    #
+    # Helpers for XML config
+    #
     def partitionFilter(self, filter="", valuesDict=None, typeId="", targetId=0):
         return PART_FILTER
     def partitionFilterForTriggers(self, filter="", valuesDict=None, typeId="", targetId=0):
