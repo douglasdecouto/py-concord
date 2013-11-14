@@ -785,26 +785,28 @@ class Plugin(indigo.PluginBase):
         zone_dev.updateStateOnServer('isTrouble', 'Trouble' in zone_state)
         zone_dev.updateStateOnServer('isBypassed', 'Bypassed' in zone_state)
 
-        # Update the summary zoneState
+        # Update the summary zoneState.  See Devices.xml to understand
+        # how we map multiple state flags into a single state that
+        # Indigo understands.
         bypassed = 'Bypass' in zone_state
         if len(zone_state) == 0:
-            zs = 'normal'
+            zs = 'enabled'
+        elif 'Faulted' in zone_state or 'Trouble' in zone_state:
+            zs = 'faulted'
         elif 'Alarm' in zone_state:
             zs = 'alarm'
-        elif 'Faulted' in zone_state or 'Trouble' in zone_state:
-            zs = 'fault'
-        elif 'Tripped' in zone_state:
+        elif 'Tripped' in zone_states:
             zs = 'tripped'
         elif 'Bypassed' in zone_state:
-            zs = 'bypassed'
+            zs = 'disabled'
         else:
-            zs = 'unknown'
+            zs = 'unavailable'
             
-        if bypassed and zs in ('normal', 'tripped'):
-            zs += '_bypassed'
+        # if bypassed and zs in ('normal', 'tripped'):
+        #     zs += '_bypassed'
 
         zone_dev.updateStateOnServer('zoneState', zs)
-        if zs in ('fault', 'alarm'):
+        if zs in ('faulted', 'alarm'):
             zone_dev.setErrorStateOnServer(', '.join(zone_state))
 
 

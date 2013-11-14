@@ -207,6 +207,28 @@
   </Device>
 
 
+  <!--
+      Indigo displays custom zone states in the Device panel as follows, as of API v1.11
+      http://www.perceptiveautomation.com/wiki/doku.php?id=api_release_notes:1.11
+      if status string contains one of ["inactive", "disabled", "closed", "disconnected", "unavailable"] or if the state value is a boolean and false show a gray dot
+      if status string contains one of ["active", "enabled", "open", "connected", "available"] or if the state value is a boolean and true show a green dot
+      if status string contains "delay" show the timer on icon
+      if status string contains "tripped" or "faulted" show a red dot
+
+      Concord zone state is a set of flags, we assume multiple flags can be set at once.
+          tripped, faulted, alarm, trouble, bypass
+
+     Because set the server error state on a device (and get the red dot) we don't need to give up the states where that makes sense just because Indigo doesn't recognize them.
+
+     Map these flags as follows, in the following order:
+          If Concord state is unknown (e.g. on startup) -> Indigo device is 'unavailable'
+          Otherwise, if Concord flags faulted or trouble are set -> Indigo device is 'faulted', Indigo error state set
+          Otherwise, if alarm is set -> device is 'alarm', Indigo error state set
+          Otherwise, if tripped is set -> device is 'tripped'
+          Otherwise, if bypass is set -> device is 'disabled'
+          Otherwise, no flags are set -> device is 'enabled'; implied door/window is closed, or nothing sensed.
+  -->
+
 
   <Device type="custom" id="zone">
     <Name>Zone</Name>
@@ -234,14 +256,12 @@
       <State id="zoneState" defaultValue="Unknown">
 	<ValueType>
           <List>
-            <Option value="unknown">Uknown</Option>
-            <Option value="fault">fault</Option>
+            <Option value="unavailable">Unavailable</Option>
+            <Option value="faulted">Faulted or Trouble</Option>
+            <Option value="tripped">Tripped/Open</Option>
             <Option value="alarm">Alarm</Option>
-            <Option value="normal">Closed</Option>
-            <Option value="tripped">Open</Option>
-            <Option value="bypassed">Bypassed</Option>
-            <Option value="normal_bypassed">Closed (bypassed)</Option>
-            <Option value="tripped_bypassed">Open (bypassed)</Option>
+            <Option value="disabled">Bypassed</Option>
+            <Option value="enabled">Normal/Closed</Option>
           </List>
         </ValueType>
 	<TriggerLabel>Zone state is</TriggerLabel>
