@@ -513,8 +513,8 @@ class AlarmPanelInterface(object):
         msg = build_dynamic_data_refresh()
         self.enqueue_msg_for_tx(msg)
 
-    def send_keypress(self, keys, partition=1):
-        msg = build_keypress(keys, partition, area=0)
+    def send_keypress(self, keys, partition=1, no_check=False):
+        msg = build_keypress(keys, partition, area=0, no_check=no_check)
         self.enqueue_msg_for_tx(msg)
         
         

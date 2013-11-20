@@ -288,7 +288,7 @@ class Plugin(indigo.PluginBase):
 
         if dev.deviceTypeId == "panel":
             if self.panel is not None and self.panelDev.id != dev.id:
-                dev.updateStateOnServer('panelState', 'unknown')
+                dev.updateStateOnServer('panelState', 'unavailable')
                 self.logger.error("Can't have more than one panel device; panel already setup at device id %r" % self.panelDev.id)
                 return
 
@@ -298,7 +298,7 @@ class Plugin(indigo.PluginBase):
             try:
                 self.panel = concord.AlarmPanelInterface(self.serialPortUrl, 0.5, self.logger)
             except Exception, ex:
-                dev.updateStateOnServer("panelState", "error")
+                dev.updateStateOnServer("panelState", "faulted")
                 dev.setErrorStateOnServer("Unable to connect")
                 self.logger.error("Unable to start alarm panel interface: %s" % str(ex))
                 return
@@ -795,7 +795,7 @@ class Plugin(indigo.PluginBase):
             zs = 'faulted'
         elif 'Alarm' in zone_state:
             zs = 'alarm'
-        elif 'Tripped' in zone_states:
+        elif 'Tripped' in zone_state:
             zs = 'tripped'
         elif 'Bypassed' in zone_state:
             zs = 'disabled'
@@ -894,7 +894,7 @@ class Plugin(indigo.PluginBase):
 
         elif cmd_id == 'EQPT_LIST_DONE':
             if not self.panelInitialQueryDone:
-                self.panelDev.updateStateOnServer('panelState', 'ready')
+                self.panelDev.updateStateOnServer('panelState', 'active')
                 self.panelInitialQueryDone = True
 
         elif cmd_id == 'ALARM':

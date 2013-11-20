@@ -45,11 +45,11 @@
       <State id="panelState" defaultValue="unknown" readonly="YES">
 	<ValueType>
 	  <List>
-            <Option value="unknown">Unknown</Option>
+            <Option value="unavailable">Unavailable</Option>
 	    <Option value="connecting">Connecting</Option>
 	    <Option value="exploring">Exploring</Option>
-	    <Option value="ready">Ready</Option>
-	    <Option value="error">Error</Option>
+	    <Option value="active">Active</Option>
+	    <Option value="faulted">Faulted</Option>
 	  </List>
 	</ValueType>
 	<TriggerLabel>Panel State is</TriggerLabel>

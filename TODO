@@ -1,5 +1,7 @@
-- Make zones a subset of onOff device or sensors?  Will that make them work better in indigo touch?
-- Add actions to arm
+- how to send '*' keypress
+- variable for LCD line 1 and LCD line 2 for showing on control page
+- Add actions to arm  -- detect is quick-arm is set and don't ask for pwasword if it is.
+- detect unknown messages and send to email or create event
 - Action to adjust keypad volume
 - Action to adjust speaker volume
 - Temp & timeAndDate
@@ -27,6 +29,8 @@ X - split out the two lines for LCD display
 
 - Should partition have explicit alarm state?
 
+- need to stpo message handler when panel objext goes away -- i.e. crashes when you deleted Panel device
+
 X - Create way to send synthetic events (e.g. alarms) into plugin for testing
 X - **Handle alarm events.  This includes cancels & restorals**
 X - Can a zone/partition device change its config while active?  (i.e. after startComm but before stopComm)?  Answer: no, we can rely on start/StopComm
@@ -38,7 +42,7 @@ X - Not sure about how to parameterize a new zone dev when we have no panel info
 X - XXX use props or state to hold zone config info?  If props, how to get zone/part visible to user.  Answer: 'address' field.  OK.  So revamp how startComm/stopComm work...
 X - different sets of partition states between partition info cmd and arming cmd; try to handle in a useful manner
 X - fixup zone states: unknown, tripped, OK, problem
-
+X - Make zones a subset of onOff device or sensors?  Will that make them work better in indigo touch? -- fixed by using state names that indigo app interprets for state symbols
 
 
 
