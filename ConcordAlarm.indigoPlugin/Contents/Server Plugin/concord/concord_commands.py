@@ -558,10 +558,11 @@ def build_cmd_equipment_list(request_type=0):
 def build_dynamic_data_refresh():
     return [ 0x02, 0x20 ]
 
-def build_keypress(keys, partition, area=0):
+def build_keypress(keys, partition, area=0, no_check=False):
     assert len(keys) < 55
-    for k in keys:
-        assert k in KEYPRESS_CODES
+    if not no_check:
+        for k in keys:
+            assert k in KEYPRESS_CODES
     data = [ 4+len(keys), 0x40, partition, area ]
     data.extend(keys)
     return data

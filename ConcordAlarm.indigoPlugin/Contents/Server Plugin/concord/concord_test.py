@@ -124,6 +124,14 @@ def main():
             if len(l) < 1:
                 continue
             cmd = l[0]
+            if cmd == 'x':
+                try: 
+                    # * token is 0x2F -- but keypress is 0x0a
+                    msg = concord.decode_message_from_ascii(l[1:])
+                    panel.send_keypress(msg, partition=1, no_check=True)
+                except Exception, ex:
+                    print "Problem sending keypresses: %r" % ex
+                continue
             x = 1
             if len(l) > 1:
                 try:
