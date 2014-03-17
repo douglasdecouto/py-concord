@@ -1,4 +1,4 @@
-- how to send '*' keypress
+- how to send '*' keypress and other 
 - variable for LCD line 1 and LCD line 2 for showing on control page
 - Add actions to arm  -- detect is quick-arm is set and don't ask for pwasword if it is.
 - detect unknown messages and send to email or create event

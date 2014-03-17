@@ -253,7 +253,7 @@
 
     <States>
       <!-- Summary state suitable for showing in Indigo device summary. -->
-      <State id="zoneState" defaultValue="Unknown">
+      <State id="zoneState" defaultValue="unavailable">
 	<ValueType>
           <List>
             <Option value="unavailable">Unavailable</Option>

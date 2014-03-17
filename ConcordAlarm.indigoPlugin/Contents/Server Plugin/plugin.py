@@ -549,7 +549,7 @@ class Plugin(indigo.PluginBase):
             self.panel.request_all_equipment()
 
     def menuRefreshZones(self):
-        self.logger.debuig("Menu item: Refresh Zones")
+        self.logger.debug("Menu item: Refresh Zones")
         if not self.panel:
             self.logger.warn("No panel to refresh")
         else:
@@ -770,7 +770,7 @@ class Plugin(indigo.PluginBase):
     def updateZoneDeviceState(self, zone_dev, zone_key):
         if zone_key not in self.zones:
             self.logger.debug("Unable to update Indigo zone device %s - zone %d partition %d; no knowledge of that zone" % (zone_dev.name, zone_key[1], zone_key[0]))
-            zone_dev.updateStateOnServer('zoneState', 'unknown')
+            zone_dev.updateStateOnServer('zoneState', 'unavailable')
             return
         data = self.zones[zone_key]
         if 'zone_type' in data:
