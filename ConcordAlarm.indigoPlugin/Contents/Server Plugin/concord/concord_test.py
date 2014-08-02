@@ -82,7 +82,8 @@ def run_test():
         '0d22020600020102030409050600', # Alarm/trouble
         '090304001100ff020400', # zone data, no zone text
         '0c0304001100ff02046e574600', # zone data, with zone text
-        '0b0114030202040000000700',
+        '0b0114030202040000000700', # ???
+        '0b0114040716690003834575', # Jesse's system -- Panel type command
         ]
 
     for m in messages2:

@@ -1,17 +1,25 @@
 """
-
+Main plugin driver code for Indigo plugin.
 """
-
 
 import os
 import sys
 import time
 
+from collections import deque
+from datetime import datetime
+
 from concord import concord, concord_commands, concord_alarm_codes
 from concord.concord_commands import STAR, HASH
 
-# Note the "indigo" module is automatically imported and made available inside
-# our global name space by the host process.
+# Note: the "indigo" module is automatically imported and made
+# available inside our global name space by the host process.
+
+# Default length of internal event log, in days.  Note that this is
+# the internal event log, as opposed to the logging of messages into
+# the Indigo system log.
+DEF_LOG_DAYS = 5
+DEF_ERR_LOG_DAYS = 30
 
 
 #
@@ -163,15 +171,62 @@ class Plugin(indigo.PluginBase):
         # fire off the events described in our Events.xml.
         self.triggers = { }
 
+        # We maintain a regular event log, and an 'error' event log
+        # with only exception-type information.  Each has an
+        # associated number of days for which it retains events (from
+        # oldest to most recent event in log).
+        #
+        # These are logs of events kep internally to the plugin, as
+        # opposed to the log messages which are printed/sent to Indigo
+        # and controlled by the 'log level'
+        self.eventLog = deque()
+        self.errLog = deque()
+        self.eventLogDays = 0
+        self.errLogDays = 0
+
+        # If a reporting email address is specified, we will try to
+        # send emails about exception events.
+        self.reportEmail = None
+        
     def __del__(self):
         indigo.PluginBase.__del__(self)
 
     def startup(self):
         self.logger.debug("startup called")
+        self.logEvent("Plugin starting up", True)
 
     def shutdown(self):
         self.logger.debug("shutdown called")
-                
+        self.logEvent("Plugin stopping", True)
+
+    #
+    # Internal event log
+    #
+    def _logEvent(self, eventInfo, eventTime, q, maxAge):
+        pair = (eventTime, eventInfo)
+        q.append(pair)
+        while len(q) > 0:
+            dt = eventTime - q[0][0]
+            if dt.days > maxAge:
+                q.popleft()
+            else:
+                break
+
+    def logEvent(self, eventInfo, isErr=False):
+        event_time = datetime.now()
+        self._logEvent(eventInfo, event_time, self.eventLog, self.eventLogDays)
+        if isErr:
+            self._logEvent(eventInfo, event_time, self.errLog, self.errLogDays)
+
+    def logEventZone(self, zoneName, zoneState, prevZoneState, logMessage, cmd, cmdData, isErr=False):
+        d = { 'zone_name': zoneName,
+              'zone_state': zoneState,
+              'prev_zone_state': prevZoneState,
+              'message': logMessage,
+              'command': cmd,
+              'command_data': cmdData }
+        self.logEvent(d, isErr)
+
     #
     # Triggers
     #
@@ -206,7 +261,19 @@ class Plugin(indigo.PluginBase):
         self.validateSerialPortUi(valuesDict, errorsDict, "panelSerialPort")
         
         # Put other config UI validation here -- add errors to errorDict.
-        # ...
+        try: logDays = int(valuesDict['logDays'])
+        except ValueError: logDays = -1
+        if logDays < 0:
+            errorsDict['logDays'] = "Log size must be integer >= 0 days"
+
+        try: errLogDays = int(valuesDict['errLogDays'])
+        except ValueError: errLogDays = -1
+        if logDays < 0:
+            errorsDict['errLogDays'] = "Error log size must be integer >= 0 days"
+
+        email = valuesDict['reportEmail']
+        if email.strip() != '' and '@' not in email:
+            errorsDict['reportEmail'] = "Report email should be blank or a valid email address"
 
         if len(errorsDict) > 0:
             # Some UI fields are not valid, return corrected fields and error messages (client
@@ -232,6 +299,11 @@ class Plugin(indigo.PluginBase):
         self.keepAlive = pluginPrefsDict.get('keepAlive', False)
         self.logger.log_always("New prefs: Keep Alive=%r, Log Level=%s" % \
                                    (self.keepAlive, LOG_PREFIX[self.logger.level]))
+        self.reportEmail = pluginPrefsDict.get('reportEmail', '')
+        if self.reportEmail.strip() == '':
+            self.reportEmail = None
+        self.eventLogDays = int(pluginPrefsDict.get('logDays', DEF_LOG_DAYS))
+        self.errLogDays = int(pluginPrefsDict.get('errLogDays', DEF_ERR_LOG_DAYS))
 
     #
     # Device methods
@@ -287,6 +359,7 @@ class Plugin(indigo.PluginBase):
         self.logger.debug("Device start comm: %s, %s, %s" % (dev.name, dev.id, dev.deviceTypeId))
 
         if dev.deviceTypeId == "panel":
+            self.logEvent("Starting panel device %r" % dev.name, True)
             if self.panel is not None and self.panelDev.id != dev.id:
                 dev.updateStateOnServer('panelState', 'unavailable')
                 self.logger.error("Can't have more than one panel device; panel already setup at device id %r" % self.panelDev.id)
@@ -311,14 +384,7 @@ class Plugin(indigo.PluginBase):
                 self.panel_command_names[cmd_id] = cmd_name
                 self.panel.register_message_handler(cmd_id, self.panelMessageHandler)
 
-            # Ask the panel to tell us all about itself.
-            dev.updateStateOnServer("panelState", "exploring")
-
-            self.logger.debug("Querying panel for state")
-            self.panel.request_all_equipment()
-            self.panel.request_dynamic_data_refresh()
-            
-            self.panelInitialQueryDone = False
+            self.refreshPanelState("Indigo panel device startup")
 
         elif dev.deviceTypeId == 'zone':
             zk = zonekey(dev)
@@ -354,6 +420,7 @@ class Plugin(indigo.PluginBase):
         self.logger.debug("Device stop comm: %s, %s, %s" % (dev.name, dev.id, dev.deviceTypeId))
 
         if dev.deviceTypeId == "panel":
+            self.logEvent("Stopping panel device %r" % dev.name, True)
             if self.panelDev is None or self.panelDev.id != dev.id:
                 self.logger.error("Stopping a panel we don't know about at device id %r" % dev.id)
                 raise Exception("Extra panel device")
@@ -420,6 +487,23 @@ class Plugin(indigo.PluginBase):
             self.logger.debug("Got StopThread in runConcurrentThread()")
             pass    
 
+    def refreshPanelState(self, reason):
+        """
+        Ask the panel to tell us all about itself.  We do this on
+        startup, and when the panel asks us to (e.g. under various
+        error conditions, or even just periodically).
+        """
+        self.logger.info("Querying panel for state (%s)" % reason)
+        if self.panelDev is None:
+            self.logger.error("No Indigo panel device configured")
+            return
+
+        self.panelDev.updateStateOnServer("panelState", "exploring")
+        self.panel.request_all_equipment()
+        self.panel.request_dynamic_data_refresh()
+        self.panelInitialQueryDone = False
+        
+
     def isReadyToArm(self, partition_num):
         """ 
         Returns pair: first element is True if it's ok to arm;
@@ -432,7 +516,6 @@ class Plugin(indigo.PluginBase):
         # TODO: check all the zones, etc.
         return True, "Partition ready to arm"
 
-    
     def checkPartition(self, valuesDict, errorsDict):
         try:
             part = int(valuesDict['partition'])
@@ -444,11 +527,14 @@ class Plugin(indigo.PluginBase):
     # MenuItems.xml actions:
     def menuArmDisarm(self, valuesDict, itemId):
         self.logger.debug("Menu item: Arm/Disarm: %s" % str(valuesDict))
+
         errors = indigo.Dict()
 
         arm_silent = valuesDict['silent']
         bypass = valuesDict['bypass']
         action = valuesDict['action']
+
+        self.logEvent("Menu Arm/Disarm to %s, bypass=%r, silent=%r" % (action, bypass, silent), True)
 
         part = self.checkPartition(valuesDict, errors)
         if part > 0:
@@ -629,7 +715,7 @@ class Plugin(indigo.PluginBase):
     
     def menuDumpZonesToLog(self):
         """
-        Print to log our iternal zone state information; cross-check
+        Print to log our internal zone state information; cross-check
         Indigo devices against this state.
         """
         for zk, zone_data in sorted(self.zones.iteritems()):
@@ -675,6 +761,8 @@ class Plugin(indigo.PluginBase):
         else:
             error['alarmCode'] = CODE_ERR
 
+        self.logEvent("Menu Send Test Alarm %s, partition %d" % (valuesDict['alarmCode'], part), True)
+
         if self.panel is None:
             errors['partition'] = "The alarm panel is not active"
 
@@ -685,6 +773,37 @@ class Plugin(indigo.PluginBase):
             return (True, valuesDict)
 
 
+    def menuClearLog(self, valuesDict, itemId):
+        clear_event_log = valuesDict.get("clearLog", False)
+        clear_error_log = valuesDict.get("clearErrLog", False)
+
+        if clear_event_log:
+            self.logger.log_always("Clearing Event log")
+            self.eventLog.clear()
+        if clear_error_log:
+            self.logger.log_always("Clearing Error log")
+            self.errLog.clear()
+
+        return True, valuesDict
+
+    def menuDumpLog(self, valuesDict, itemId):
+        log_name = valuesDict.get("log", "none")
+        if log_name == 'eventLog':
+            log = self.eventLog
+            name = 'Event log'
+        elif log_name == 'errLog':
+            log = self.errLog
+            name = 'Error log'
+        else:
+            log = None
+
+        self.logger.log_always("Displaying %s" % name)
+        
+        if log is not None:
+            for t, entry in log:
+                self.logger.log_always("%s: %r" % (t.isoformat(' '), entry))
+        
+        return True, valuesDict
         
     #
     # Plugin Actions object callbacks (pluginAction is an Indigo plugin action instance)
@@ -839,21 +958,29 @@ class Plugin(indigo.PluginBase):
 
         elif cmd_id in ('ZONE_DATA', 'ZONE_STATUS'):
             # First update our internal state about the zone
-
             zone_num = msg['zone_number']
             part_num = msg['partition_number']
             zk = (part_num, zone_num)
             if 'zone_text' in msg and msg['zone_text'] != '':
                 zone_name = '%s - %r' % (zone_num, msg['zone_text'])
+            elif zk in self.zones and self.zones[zk].get('zone_text', '') != '':
+                zone_name = '%s - %r' % (zone_num, self.zones[zk]['zone_text'])
             else:
                 zone_name = '%d' % zone_num
+
+            old_zone_state = "Not known"
+            new_zone_state = msg['zone_state']
+
             if zk in self.zones:
-                self.logger.info("Updating zone %s with %s message" % (zone_name, cmd_id))
+                self.logger.info("Updating zone %s with %s message, zone state=%r" % \
+                                     (zone_name, cmd_id, msg['zone_state']))
                 zone_info = self.zones[zk]
+                old_zone_state = zone_info['zone_state']
                 zone_info.update(msg)
                 del zone_info['command_id']
             else:
-                self.logger.info("Learning new zone %s from %s message" % (zone_name, cmd_id))
+                self.logger.info("Learning new zone %s from %s message, zone_state=%r" % \
+                                     (zone_name, cmd_id, msg['zone_state']))
                 zone_info = msg.copy()
                 del zone_info['command_id']
                 self.zones[zk] = zone_info
@@ -865,10 +992,31 @@ class Plugin(indigo.PluginBase):
             else:
                 self.logger.warn("No Indigo zone device for zone %s" % zone_name)
 
+            # Log to internal event log.  If the zone is changed to or
+            # from one of the 'error' states, we will use the error
+            # log as well.
+            use_err_log = False
+            for err_state in ['Alarm', 'Trouble', 'Bypassed']:
+                if err_state in new_zone_state or err_state in old_zone_state:
+                    use_err_log = True
+            self.logEventZone(zone_name, new_zone_state, old_zone_state,
+                              "Zone update message", cmd_id, msg, use_err_log)
+            
+
         elif cmd_id in ('PART_DATA', 'ARM_LEVEL', 'FEAT_STATE', 'DELAY', 'TOUCHPAD'):
             part_num = msg['partition_number']
+            old_part_state = "Unknown"
             if part_num in self.parts:
-                self.logger.info("Updating partition %d with %s message" % (part_num, cmd_id))
+                old_part_state = self.getPartitionState(part_num)
+                # Log informational message about updating the
+                # partition with message info.  However, for touchpad
+                # messages this could be quite frequent (every minute)
+                # so log at a higher level.
+                if cmd_id == 'TOUCHPAD':
+                    log_fn = self.logger.debug_verbose
+                else:
+                    log_fn = self.logger.info
+                log_fn("Updating partition %d with %s message" % (part_num, cmd_id))
                 part_info = self.parts[part_num]
                 part_info.update(msg)
                 del part_info['command_id']
@@ -877,19 +1025,34 @@ class Plugin(indigo.PluginBase):
                 part_info = msg.copy()
                 del part_info['command_id']
                 self.parts[part_num] = part_info
+
             if part_num in self.partDevs:
                 self.updatePartitionDeviceState(self.partDevs[part_num], part_num)
             else:
-                self.logger.warn("No Indigo partition device for partition %d" % part_num)
+                # The panel seems to send touchpad date/time messages
+                # for all partitions it supports.  User may not wish
+                # to see warnings if they haven't setup the Partition
+                # device in Indigo, so log this at a higher level.
+                if cmd_id == 'TOUCHPAD':
+                    log_fn = self.logger.debug_verbose
+                else:
+                    log_fn = self.logger.warn
+                log_fn("No Indigo partition device for partition %d" % part_num)
 
             # We update the touchpad even when it's not a TOUCHPAD
             # message so that the touchpad device can track the
-            # underluing partition state.  Later on we may also add
+            # underlying partition state.  Later on we may also add
             # other features to mirror the LEDs on an actual touchpad
             # as well.
             if part_num in self.touchpadDevs:
                 for dev_id, dev in self.touchpadDevs[part_num].iteritems():
                     self.updateTouchpadDeviceState(dev, part_num)
+
+            # Write message to internal log
+            if cmd_id in ('PART_DATA', 'ARM_LEVEL', 'DELAY'):
+                part_state = self.getPartitionState(part_num)
+                use_err_log = cmd_id != 'PART_DATA' or old_part_state != part_state or part_state != 'ready'
+                self.logEvent(msg, use_err_log)
 
 
         elif cmd_id == 'EQPT_LIST_DONE':
@@ -937,10 +1100,12 @@ class Plugin(indigo.PluginBase):
                 self.logger.debug(" .... Done")
             else:
                 self.logger.warn("No Indigo partition device for partition %d" % part_num)
+            
+            msg['source_desc'] = source_desc
+            self.logEvent(msg, True)
 
-        elif cmd_id == 'CLEAR_IMAGE':
-            # Logic goes here to empty all of our state and reload it.
-            pass
+        elif cmd_id in ('CLEAR_IMAGE', 'EVENT_LOST'):
+            self.refreshPanelState("Reacting to %s message" % cmd_id)
 
         else:
             self.logger.debug_verbose("Plugin: unhandled panel message %s" % cmd_id)
@@ -977,3 +1142,7 @@ class Plugin(indigo.PluginBase):
                 
                 if part_match and code_match:
                     indigo.trigger.execute(trigger)
+
+        elif cmd_id == 'ZONE_STATUS':
+            for trigger in self.getTriggersForType('zoneStateChanged'):
+                pass

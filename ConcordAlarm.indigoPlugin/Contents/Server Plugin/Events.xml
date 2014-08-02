@@ -32,4 +32,20 @@
     </ConfigUI>
   </Event>
 
+  <Event id="zoneStateChanged">
+    <Name>Zone Device State Changed</Name>
+    <ConfigUI>
+      <Field type="menu" id="address" defaultValue="any">
+	<Label>Partition:</Label>
+	<List class="self" filter="N/A" method="partitionFilterForTriggers"/>
+      </Field>
+<!--
+      <Field type="menu" id="alarmGeneralType" defaultValue="any">
+        <Label>Alarm General Type:</Label>
+        <List class="self" filter="N/A" method="alarmGeneralTypeFilter"/>
+      </Field>
+-->
+    </ConfigUI>
+  </Event>
+
 </Events>

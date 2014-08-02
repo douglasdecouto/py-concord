@@ -152,6 +152,26 @@ def cmd_panel_type(msg):
         # Interpret Concord hw/sw revision numbers.
         # Really not sure about this. XXX
         d['is_concord'] = True
+
+        # Example (hex):
+        # 0b0114040716690003834575 -- Jesse's system -- Panel type command
+        # 0b = command len
+        # 01 = command code
+        # 14 = panel type, (= Concord)
+        # 04 = HW rev high (= 'D')
+        # 07 = HW rev low  (= 7)
+        #       --> HW Rev = D7
+        # 16 = SW rev high
+        # 69 = SW rev low
+        #       --> ?
+        # 00 03 83 45 = Serial number
+        # 75 = Checksum
+
+        # My panel:
+        # HW Rev = G1
+        # SW Rev = 327680 = 0x050000
+        # Serial number = 19419753
+
         # Hw rev is letter/digit pair, first byte represents 'A' as 1,
         # Second byte represents '0' as 0.
         if 0 < msg[3] < 27:
@@ -163,7 +183,7 @@ def cmd_panel_type(msg):
         else:
             digit = '?'
         hw_rev = letter + digit
-        sw_rev = msg[5] << 8 + msg[6]
+        sw_rev = (msg[5] << 8) + msg[6]
     else:
         d['is_concord'] = False
         hw_rev = "%d.%d" % (msg[3], msg[4])
@@ -176,7 +196,13 @@ def cmd_panel_type(msg):
     return d
 
 def cmd_automation_event_lost(msg):
+    """ 
+    (From protocol docs) Panel's automation buffer has overflowed.
+    Automation modules should respond to this with request for Dynamic
+    Data Refresh and Full Equipment List Request.
+    """
     return { }
+
 
 ZONE_STATES = {
     0x01: 'Tripped',
@@ -192,6 +218,7 @@ def build_state_list(state_code, state_dict):
         if bitval & state_code:
             states.append(state_name)
     return states
+
 
 # Concord zone types only
 ZONE_TYPES = {
@@ -469,6 +496,16 @@ def cmd_keyfob(msg):
     return { }
 
 def cmd_clear_image(msg):
+    """
+    (From protocol docs) This command is sent on panel power up
+    initialization and when a communication failure restoral with the
+    Automation Module occurs. The Concord will also send this command
+    when user or installer programming mode is exited.  This is done
+    instead of sending a message for each item as it is changed (user
+    code deleted, etc.). The Automation Device should perform an
+    Equipment List and Refresh when the Clear Image command is
+    received.
+    """
     return { }
 
 def cmd_eqpt_list_done(msg):
@@ -581,6 +618,6 @@ TX_COMMANDS = {
     (0x02, 0x0a): ("Single Equipment List Request/Schedule Data", build_cmd_equipment_list),
     (0x02, 0x0b): ("Single Equipment List Request/Scheduled Event Data", build_cmd_equipment_list),
     (0x02, 0x0c): ("Single Equipment List Request/Light to Sensor Attachment", build_cmd_equipment_list),
-    0x20: ("Dynamic Data Refresh Request", None),
-    0x40: ("Keypress", None),
+    0x20: ("Dynamic Data Refresh Request", build_dynamic_data_refresh),
+    0x40: ("Keypress", build_keypress),
 }

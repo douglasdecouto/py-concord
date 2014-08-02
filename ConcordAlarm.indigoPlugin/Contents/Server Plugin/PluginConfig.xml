@@ -12,6 +12,15 @@
       <Option value="debugVerbose">Overly-detailed debug info and above</Option>
     </List>
   </Field>
+  <Field type="textfield" id="reportEmail">
+    <Label>Email reports</Label>
+  </Field>
+  <Field type="textfield" id="logDays" default="5">
+    <Label>Log size (days)</Label>
+  </Field>
+  <Field type="textfield" id="errLogDays" default="30">
+    <Label>Error log size (days)</Label>
+  </Field>
   <Field type="checkbox" id="keepAlive">
     <Label>Use keep-alive monitoring</Label>
   </Field>

@@ -23,10 +23,15 @@ Usage:
  python concord.py /dev/cu.usbserial tx
 
 
+RELEASES
+
+July 2014 - v0.3.3
+     - Options for less noisy logging of touchpad messages
+
 
 LICENSE and COPYRIGHT:
 
-This code is Copyright 2013 by Douglas S. J. De Couto
+This code is Copyright 2013, 2014 by Douglas S. J. De Couto
 
 It is made availble to you under a BSD license; see the file LICENSE
 for more details.

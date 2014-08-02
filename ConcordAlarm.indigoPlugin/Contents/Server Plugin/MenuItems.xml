@@ -109,6 +109,34 @@
     </ConfigUI>
   </MenuItem>
 
+  <MenuItem id="sep3"/>
+
+  <MenuItem id="clearEventLog">
+    <Name>Clear Event Log</Name>
+    <CallbackMethod>menuClearLog</CallbackMethod>
+    <ConfigUI>
+      <Field type="checkbox" id="clearLog" defaultValue="false">
+	<Description>Clear Event log</Description>
+      </Field>
+      <Field type="checkbox" id="clearErrLog" defaultValue="false">
+	<Description>Clear Error log</Description>
+      </Field>
+    </ConfigUI>
+  </MenuItem>
+
+  <MenuItem id="dumpEventLog">
+    <Name>Display Event Log</Name>
+    <CallbackMethod>menuDumpLog</CallbackMethod>
+    <ConfigUI>
+      <Field type="menu" id="log" defaultValue="errLog">
+	<Label>Log to display:</Label>
+	<List>
+	  <Option value="eventLog">Event log</Option>
+	  <Option value="errLog">Error log</Option>
+	</List>
+      </Field>
+    </ConfigUI>
+  </MenuItem>
 
 
 </MenuItems>
