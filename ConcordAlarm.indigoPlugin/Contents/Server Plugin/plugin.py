@@ -270,7 +270,7 @@ class Plugin(indigo.PluginBase):
         *triggerTypeIds* is a set or list of trigger type IDs we want
         to check.  We will give back the list of those types of
         triggers we know about in a deterministic order.
-        """
+v        """
         t = [ ]
         for tid, trigger in sorted(self.triggers.iteritems()):
             if trigger.pluginTypeId in triggerTypeIds:
@@ -1078,6 +1078,13 @@ New State: %r
 Message: %r
 """ % (date_str, zone_name, cmd_id, old_zone_state, new_zone_state, msg)
                     self.sendEmail(subject, body)
+
+            # Activate any zone monitor triggers
+            for trigger in self.getTriggersForType(['zoneMonitorTriggered']):
+                trig_part = any_if_blank(trigger.pluginProps['address'])
+                if trig_part == 'any' or int(trig_part) == part_num:
+                    indigo.trigger.execute(trigger)
+
 
         elif cmd_id in ('PART_DATA', 'ARM_LEVEL', 'FEAT_STATE', 'DELAY', 'TOUCHPAD'):
             part_num = msg['partition_number']
