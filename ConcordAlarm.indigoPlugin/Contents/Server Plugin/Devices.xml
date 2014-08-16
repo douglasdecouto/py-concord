@@ -55,6 +55,16 @@
 	<TriggerLabel>Panel State is</TriggerLabel>
 	<ControlPageLabel>Panel State</ControlPageLabel>
       </State>
+      <State id="panelZoneMonitorEnabled" defaultValue="Off" readonly="YES">
+	<ValueType>Boolean</ValueType>
+	<TriggerLabel>Zone Monitor is</TriggerLabel>
+	<ControlPageLabel>Zone Monitor</ControlPageLabel>
+      </State>
+      <State id="panelZoneMonitorSendEmail" defaultValue="Off" readonly="YES">
+	<ValueType>Boolean</ValueType>
+	<TriggerLabel>Zone Monitor Email is</TriggerLabel>
+	<ControlPageLabel>Zone Monitor Email</ControlPageLabel>
+      </State>
     </States>
 
     <UiDisplayStateId>panelState</UiDisplayStateId>

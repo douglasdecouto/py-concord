@@ -1,6 +1,8 @@
 MUST DO
 -------
 
+- panel variables are persisted by indigo; need to pick up those
+  changes and push to python member variables in plugin object.
 
 - trigger/events on device changes
 

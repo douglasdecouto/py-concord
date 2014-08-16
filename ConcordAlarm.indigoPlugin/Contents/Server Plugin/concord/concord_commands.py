@@ -204,12 +204,18 @@ def cmd_automation_event_lost(msg):
     return { }
 
 
+TRIPPED = 'Tripped'
+FAULTED = 'Faulted'
+ALARM   = 'Alarm'
+TROUBLE = 'Trouble'
+BYPASSED = 'Bypassed'
+
 ZONE_STATES = {
-    0x01: 'Tripped',
-    0x02: 'Faulted',
-    0x04: 'Alarm',
-    0x08: 'Trouble',
-    0x10: 'Bypassed',
+    0x01: TRIPPED,
+    0x02: FAULTED,
+    0x04: ALARM,
+    0x08: TROUBLE,
+    0x10: BYPASSED,
 }
 
 def build_state_list(state_code, state_dict):

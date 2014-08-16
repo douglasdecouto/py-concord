@@ -10,7 +10,7 @@ from collections import deque
 from datetime import datetime
 
 from concord import concord, concord_commands, concord_alarm_codes
-from concord.concord_commands import STAR, HASH
+from concord.concord_commands import STAR, HASH, TRIPPED, FAULTED, ALARM, TROUBLE, BYPASSED
 
 # Note: the "indigo" module is automatically imported and made
 # available inside our global name space by the host process.
@@ -81,6 +81,18 @@ def any_if_blank(s):
     if s == '': return 'any'
     else: return s
 
+def isZoneErrState(state_list):
+    for err_state in [ ALARM, FAULTED, TROUBLE, BYPASSED ]:
+        if err_state in state_list:
+            return True;
+    return False
+
+def zoneStateChangedExceptTripped(old, new):
+    old = list(sorted(old)).remove(TRIPPED)
+    new = list(sorted(new)).remove(TRIPPED)
+    return old != new
+    
+
 
 #
 # Touchpad display when no data available
@@ -145,8 +157,6 @@ class Plugin(indigo.PluginBase):
         indigo.PluginBase.__init__(self, pluginId, pluginDisplayName, pluginVersion, pluginPrefs)
         self.logger = Logger(lev=LOG_INFO)
 
-        self.processPluginConfigPrefs(pluginPrefs)
-
         self.panel = None
         self.panelDev = None
         self.panelInitialQueryDone = False
@@ -176,7 +186,7 @@ class Plugin(indigo.PluginBase):
         # associated number of days for which it retains events (from
         # oldest to most recent event in log).
         #
-        # These are logs of events kep internally to the plugin, as
+        # These are logs of events kept internally to the plugin, as
         # opposed to the log messages which are printed/sent to Indigo
         # and controlled by the 'log level'
         self.eventLog = deque()
@@ -187,6 +197,16 @@ class Plugin(indigo.PluginBase):
         # If a reporting email address is specified, we will try to
         # send emails about exception events.
         self.reportEmail = None
+
+        # Zone monitor configurations
+        self.zoneMonitorEnabled = False
+        self.zoneMonitorSendEmail = True
+
+        # Process settings from the Config UI after initialising all
+        # the member variables, in case we want to override the
+        # defaults.
+        self.processPluginConfigPrefs(pluginPrefs)
+
         
     def __del__(self):
         indigo.PluginBase.__del__(self)
@@ -198,6 +218,11 @@ class Plugin(indigo.PluginBase):
     def shutdown(self):
         self.logger.debug("shutdown called")
         self.logEvent("Plugin stopping", True)
+
+    def sendEmail(self, subject, body):
+        if self.reportEmail is None:
+            return
+        indigo.server.sendEmailTo(self.reportEmail, subject=subject, body=body)
 
     #
     # Internal event log
@@ -297,13 +322,14 @@ class Plugin(indigo.PluginBase):
         # AlarmPanelInterface.
         self.logger.set_level(LOG_CONFIG.get(pluginPrefsDict.get('logLevel', 'info'), LOG_INFO))
         self.keepAlive = pluginPrefsDict.get('keepAlive', False)
-        self.logger.log_always("New prefs: Keep Alive=%r, Log Level=%s" % \
-                                   (self.keepAlive, LOG_PREFIX[self.logger.level]))
         self.reportEmail = pluginPrefsDict.get('reportEmail', '')
         if self.reportEmail.strip() == '':
             self.reportEmail = None
         self.eventLogDays = int(pluginPrefsDict.get('logDays', DEF_LOG_DAYS))
         self.errLogDays = int(pluginPrefsDict.get('errLogDays', DEF_ERR_LOG_DAYS))
+        self.logger.log_always("New prefs: Keep Alive=%r, Log Level=%s, Report Email=%s, Log days=%d, Err log days=%d" % \
+                                   (self.keepAlive, LOG_PREFIX[self.logger.level], self.reportEmail,
+                                    self.eventLogDays, self.errLogDays))
 
     #
     # Device methods
@@ -524,7 +550,9 @@ class Plugin(indigo.PluginBase):
             errorsDict['partition'] = "Partition must be set to a valid value (1-%d)" % concord.CONCORD_MAX_ZONE
         return part
 
-    # MenuItems.xml actions:
+    #
+    # MenuItems.xml commands:
+    # 
     def menuArmDisarm(self, valuesDict, itemId):
         self.logger.debug("Menu item: Arm/Disarm: %s" % str(valuesDict))
 
@@ -534,7 +562,7 @@ class Plugin(indigo.PluginBase):
         bypass = valuesDict['bypass']
         action = valuesDict['action']
 
-        self.logEvent("Menu Arm/Disarm to %s, bypass=%r, silent=%r" % (action, bypass, silent), True)
+        self.logEvent("Menu Arm/Disarm to %s, bypass=%r, silent=%r" % (action, bypass, arm_silent), True)
 
         part = self.checkPartition(valuesDict, errors)
         if part > 0:
@@ -806,8 +834,25 @@ class Plugin(indigo.PluginBase):
         return True, valuesDict
         
     #
-    # Plugin Actions object callbacks (pluginAction is an Indigo plugin action instance)
+    # Plugin Actions object callbacks 
     #
+    def actionWriteToLog(self, action):
+        message = self.substitute(action.props.get("msg", ""))
+        is_err = action.props.get("isErr")
+        event = { 'command': 'PLUGIN_LOG_ACTION',
+                  'message': message,
+                  'is_err': is_err
+                  }
+        self.logEvent(event, is_err)
+
+    def actionConfigZoneMonitor(self, action):
+        config = self.substitute(action.props.get("config", ""))
+        sendEmail = action.props.get("sendEmail", False)
+        self.zoneMonitorEnabled = config.lower().strip() == 'enabled'
+        self.zoneMonitorSendEmail = sendEmail
+        self.panelDev.updateStateOnServer('panelZoneMonitorEnabled', self.zoneMonitorEnabled)
+        self.panelDev.updateStateOnServer('panelZoneMonitorSendEmail', self.zoneMonitorSendEmail)
+
 
     #
     # Helpers for XML config
@@ -898,25 +943,25 @@ class Plugin(indigo.PluginBase):
             zone_dev.updateStateOnServer('zoneText', data['zone_text'])
         zone_state = data['zone_state']
         zone_dev.updateStateOnServer('isNormal', len(zone_state) == 0)
-        zone_dev.updateStateOnServer('isTripped', 'Tripped' in zone_state)
-        zone_dev.updateStateOnServer('isFaulted', 'Faulted' in zone_state)
-        zone_dev.updateStateOnServer('isAlarm', 'Alarm' in zone_state)
-        zone_dev.updateStateOnServer('isTrouble', 'Trouble' in zone_state)
-        zone_dev.updateStateOnServer('isBypassed', 'Bypassed' in zone_state)
+        zone_dev.updateStateOnServer('isTripped', TRIPPED in zone_state)
+        zone_dev.updateStateOnServer('isFaulted', FAULTED in zone_state)
+        zone_dev.updateStateOnServer('isAlarm', ALARM in zone_state)
+        zone_dev.updateStateOnServer('isTrouble', TROUBLE in zone_state)
+        zone_dev.updateStateOnServer('isBypassed', BYPASSED in zone_state)
 
         # Update the summary zoneState.  See Devices.xml to understand
         # how we map multiple state flags into a single state that
         # Indigo understands.
-        bypassed = 'Bypass' in zone_state
+        bypassed = BYPASSED in zone_state
         if len(zone_state) == 0:
             zs = 'enabled'
-        elif 'Faulted' in zone_state or 'Trouble' in zone_state:
+        elif FAULTED in zone_state or TROUBLE in zone_state:
             zs = 'faulted'
-        elif 'Alarm' in zone_state:
+        elif ALARM in zone_state:
             zs = 'alarm'
-        elif 'Tripped' in zone_state:
+        elif TRIPPED in zone_state:
             zs = 'tripped'
-        elif 'Bypassed' in zone_state:
+        elif BYPASSED in zone_state:
             zs = 'disabled'
         else:
             zs = 'unavailable'
@@ -955,6 +1000,8 @@ class Plugin(indigo.PluginBase):
             self.panelDev.updateStateOnServer('panelSerialNumber', msg['serial_number'])
             self.panelDev.updateStateOnServer('panelHwRev', msg['hardware_revision'])
             self.panelDev.updateStateOnServer('panelSwRev', msg['software_revision'])
+            self.panelDev.updateStateOnServer('panelZoneMonitorEnabled', self.zoneMonitorEnabled)
+            self.panelDev.updateStateOnServer('panelZoneMonitorSendEmail', self.zoneMonitorSendEmail)
 
         elif cmd_id in ('ZONE_DATA', 'ZONE_STATUS'):
             # First update our internal state about the zone
@@ -994,14 +1041,43 @@ class Plugin(indigo.PluginBase):
 
             # Log to internal event log.  If the zone is changed to or
             # from one of the 'error' states, we will use the error
-            # log as well.
-            use_err_log = False
-            for err_state in ['Alarm', 'Trouble', 'Bypassed']:
-                if err_state in new_zone_state or err_state in old_zone_state:
-                    use_err_log = True
+            # log as well.  We don't normally have to check for change
+            # per se, since we know it was a zone change that prompted
+            # this message.  However, if a zone is in an error state,
+            # we don't want to log an error every time it is change
+            # between tripped/not-tripped.
+            use_err_log = (isZoneErrState(old_zone_state) or isZoneErrState(new_zone_state)) \
+                and zoneStateChangedExceptTripped(old_zone_state, new_zone_state)
+            
             self.logEventZone(zone_name, new_zone_state, old_zone_state,
                               "Zone update message", cmd_id, msg, use_err_log)
-            
+
+            # If zone monitor is enabled, log any zone changes to the
+            # error log.  Optionally send an email if the user asked
+            # for that.
+            if self.zoneMonitorEnabled:
+                self.logEventZone(zone_name, new_zone_state, old_zone_state,
+                                  "Zone monitor / Zone update message", cmd_id, msg, True)
+                if self.zoneMonitorSendEmail:
+                    date_str = datetime.now().isoformat(' ')[:19]
+                    if isZoneErrState(new_zone_state):
+                        change_str = 'ERROR'
+                    elif TRIPPED in new_zone_state and TRIPPED not in old_zone_state:
+                        change_str = 'OPENED'
+                    elif TRIPPED in old_zone_state and TRIPPED not in new_zone_state:
+                        change_str = 'CLOSED'
+                    else:
+                        change_Str = 'UNKNOWN'
+                    subject = "Zone Monitor: %s %s at %s" % (zone_name, change_str, date_str)
+                    body = """
+When: %s
+Zone: %s
+Command: %s
+Old State: %r
+New State: %r
+Message: %r
+""" % (date_str, zone_name, cmd_id, old_zone_state, new_zone_state, msg)
+                    self.sendEmail(subject, body)
 
         elif cmd_id in ('PART_DATA', 'ARM_LEVEL', 'FEAT_STATE', 'DELAY', 'TOUCHPAD'):
             part_num = msg['partition_number']
