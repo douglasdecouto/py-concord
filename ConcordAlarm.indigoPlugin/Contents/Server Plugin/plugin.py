@@ -1054,8 +1054,15 @@ v        """
 
             # If zone monitor is enabled, log any zone changes to the
             # error log.  Optionally send an email if the user asked
-            # for that.
+            # for that, and fire Indigo triggers.
             if self.zoneMonitorEnabled:
+
+                # Activate any zone monitor triggers
+                for trigger in self.getTriggersForType(['zoneMonitorTriggered']):
+                    trig_part = any_if_blank(trigger.pluginProps['address'])
+                    if trig_part == 'any' or int(trig_part) == part_num:
+                        indigo.trigger.execute(trigger)
+
                 self.logEventZone(zone_name, new_zone_state, old_zone_state,
                                   "Zone monitor / Zone update message", cmd_id, msg, True)
                 if self.zoneMonitorSendEmail:
@@ -1078,12 +1085,6 @@ New State: %r
 Message: %r
 """ % (date_str, zone_name, cmd_id, old_zone_state, new_zone_state, msg)
                     self.sendEmail(subject, body)
-
-            # Activate any zone monitor triggers
-            for trigger in self.getTriggersForType(['zoneMonitorTriggered']):
-                trig_part = any_if_blank(trigger.pluginProps['address'])
-                if trig_part == 'any' or int(trig_part) == part_num:
-                    indigo.trigger.execute(trigger)
 
 
         elif cmd_id in ('PART_DATA', 'ARM_LEVEL', 'FEAT_STATE', 'DELAY', 'TOUCHPAD'):
