@@ -1,0 +1,1 @@
+Python library for communicating with a GE Concord alarm panel via the Superbus 2000  Automation Module, which provides an RS-232 serial interface to the panel.  This module is also branded by Interlogix or UTC.  The main part of this code is a plugin to connect the Indigo home automation software for Mac OS to the Concord panel.
